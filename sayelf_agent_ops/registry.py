@@ -12,15 +12,25 @@ class Registry:
     skills: dict[str, SkillContract] = field(default_factory=dict)
     route_rules: list[RouteRule] = field(default_factory=list)
     packs: dict[str, IndustryPack] = field(default_factory=dict)
+    active_role_ids: set[str] = field(default_factory=set)
 
-    # Sprint 01: registration is not activation.
     @property
     def active_roles(self) -> int:
-        return 0
+        return len(self.active_role_ids)
 
     @property
     def loaded_skills(self) -> int:
         return 0
+
+    def activate_role(self, role_id: str) -> None:
+        if role_id not in self.roles:
+            raise KeyError(f"UNKNOWN_ROLE:{role_id}")
+        self.active_role_ids.add(role_id)
+
+    def deactivate_role(self, role_id: str) -> None:
+        if role_id not in self.roles:
+            raise KeyError(f"UNKNOWN_ROLE:{role_id}")
+        self.active_role_ids.discard(role_id)
 
     def register_pack(self, pack: IndustryPack) -> None:
         if not pack.id or not pack.industry:

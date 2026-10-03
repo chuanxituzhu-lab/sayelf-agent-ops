@@ -18,11 +18,15 @@
       "minHeight": 620,
       "resizable": true
     }],
-    "security": { "csp": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src ipc: http://ipc.localhost" }
+    "security": { "csp": "default-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost" }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis", "dmg"],
+    "resources": {
+      "../../../installer/THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "../../../installer/licenses/*": "licenses/"
+    },
     "category": "Productivity",
     "shortDescription": "本机 Agent Ops 工作台",
     "longDescription": "Sayelf Agent Ops 桌面应用。",

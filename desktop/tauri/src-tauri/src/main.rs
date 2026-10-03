@@ -1,10 +1,44 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::{fs, path::PathBuf};
-use tauri::{AppHandle, Manager};
+use std::{
+    collections::HashSet,
+    fs,
+    path::{Path, PathBuf},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
+    time::{SystemTime, UNIX_EPOCH},
+};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::ShellExt;
+
+const MAX_FILE_BYTES: u64 = 15 * 1024 * 1024;
+const MAX_TOTAL_BYTES: u64 = 30 * 1024 * 1024;
+const MAX_FILES: usize = 5;
+static NEXT_WORKITEM: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Default)]
+struct PickedFiles(Mutex<HashSet<PathBuf>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SelectedEvidence {
+    path: String,
+    name: String,
+    size: u64,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtractedEvidence {
+    path: String,
+    extracted_text: String,
+    extraction_status: String,
+}
 
 fn preferences(app: &AppHandle) -> Result<PathBuf, String> {
     let directory = app
@@ -21,11 +55,16 @@ fn saved_location(app: &AppHandle) -> Option<String> {
     value.get("data_dir")?.as_str().map(str::to_owned)
 }
 
+fn require_workspace(app: &AppHandle) -> Result<String, String> {
+    saved_location(app).ok_or_else(|| "workspace not initialized".to_string())
+}
+
 async fn invoke_runtime(
     app: &AppHandle,
     action: &str,
     data_dir: Option<String>,
     pack: Option<String>,
+    extra_args: Vec<String>,
 ) -> Result<Value, String> {
     let shell = app.shell();
     let mut command = shell
@@ -37,6 +76,9 @@ async fn invoke_runtime(
     }
     if let Some(pack) = pack.as_ref() {
         command = command.arg("--pack").arg(pack);
+    }
+    for argument in extra_args {
+        command = command.arg(argument);
     }
     let output = command.output().await.map_err(|_| "runtime unavailable")?;
     let mut response: Value =
@@ -70,7 +112,7 @@ async fn invoke_runtime(
 #[tauri::command]
 async fn check_environment(app: AppHandle, data_dir: Option<String>) -> Result<Value, String> {
     let location = data_dir.or_else(|| saved_location(&app));
-    invoke_runtime(&app, "health", location, None).await
+    invoke_runtime(&app, "health", location, None, Vec::new()).await
 }
 
 #[tauri::command]
@@ -87,6 +129,7 @@ async fn initialize_workspace(
         "initialize",
         data_dir.or_else(|| saved_location(&app)),
         Some(pack),
+        Vec::new(),
     )
     .await
 }
@@ -109,14 +152,347 @@ async fn choose_data_directory(app: AppHandle) -> Result<Option<String>, String>
     .map_err(|_| "folder picker unavailable")?
 }
 
+fn allowed_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "txt" | "md" | "pdf" | "png" | "jpg" | "jpeg" | "webp" | "bmp"
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn checked_source(path: &str) -> Result<PathBuf, String> {
+    let source = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|_| "selected file unavailable".to_string())?;
+    if !allowed_extension(&source) || !source.is_file() {
+        return Err("unsupported file type".into());
+    }
+    let metadata = fs::metadata(&source).map_err(|_| "selected file unavailable")?;
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err("file is larger than 15 MiB".into());
+    }
+    Ok(source)
+}
+
+#[tauri::command]
+async fn choose_evidence_files(
+    app: AppHandle,
+    picked_files: State<'_, PickedFiles>,
+) -> Result<Vec<SelectedEvidence>, String> {
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let paths = app
+            .dialog()
+            .file()
+            .set_title("添加本地需求材料")
+            .add_filter(
+                "文本、PDF 或图片",
+                &["txt", "md", "pdf", "png", "jpg", "jpeg", "webp", "bmp"],
+            )
+            .blocking_pick_files();
+        let Some(paths) = paths else {
+            return Ok(Vec::new());
+        };
+        if paths.len() > MAX_FILES {
+            return Err("一次最多选择 5 个文件".to_string());
+        }
+        let mut total = 0_u64;
+        let mut selected = Vec::new();
+        for file_path in paths {
+            let original = file_path
+                .into_path()
+                .map_err(|_| "selected file unavailable".to_string())?;
+            let path = checked_source(&original.to_string_lossy())?;
+            let size = fs::metadata(&path)
+                .map_err(|_| "selected file unavailable")?
+                .len();
+            total += size;
+            if total > MAX_TOTAL_BYTES {
+                return Err("附件总大小不能超过 30 MiB".into());
+            }
+            let name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| "invalid file name".to_string())?
+                .to_string();
+            selected.push(SelectedEvidence {
+                path: path.to_string_lossy().into_owned(),
+                name,
+                size,
+            });
+        }
+        Ok(selected)
+    })
+    .await
+    .map_err(|_| "file picker unavailable")??;
+    let paths = result
+        .iter()
+        .map(|file| PathBuf::from(&file.path))
+        .collect::<Vec<_>>();
+    let mut allowed = picked_files
+        .0
+        .lock()
+        .map_err(|_| "file selection unavailable")?;
+    allowed.extend(paths);
+    Ok(result)
+}
+
+#[tauri::command]
+async fn read_selected_evidence(
+    path: String,
+    picked_files: State<'_, PickedFiles>,
+) -> Result<tauri::ipc::Response, String> {
+    let source = checked_source(&path)?;
+    {
+        let allowed = picked_files
+            .0
+            .lock()
+            .map_err(|_| "file selection unavailable")?;
+        if !allowed.contains(&source) {
+            return Err("请通过文件选择窗口重新添加附件。".into());
+        }
+    }
+    let bytes = fs::read(&source).map_err(|_| "selected file unavailable")?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err("file is larger than 15 MiB".into());
+    }
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+fn next_workitem_id() -> String {
+    let millis = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let sequence = NEXT_WORKITEM.fetch_add(1, Ordering::Relaxed);
+    format!("WI-{millis}-{sequence}")
+}
+
+#[tauri::command]
+async fn create_workitem(
+    app: AppHandle,
+    picked_files: State<'_, PickedFiles>,
+    request: String,
+    channel: String,
+    attachments: Vec<ExtractedEvidence>,
+) -> Result<Value, String> {
+    if request.trim().is_empty()
+        || request.chars().count() > 20_000
+        || attachments.len() > MAX_FILES
+    {
+        return Err("请填写需求，并限制在 5 个以内的附件。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let health = invoke_runtime(&app, "health", Some(data_dir.clone()), None, Vec::new()).await?;
+    if health.get("code").and_then(Value::as_i64) != Some(0) {
+        return Ok(health);
+    }
+
+    let paths = attachments
+        .iter()
+        .map(|attachment| checked_source(&attachment.path))
+        .collect::<Result<Vec<_>, _>>()?;
+    {
+        let allowed = picked_files
+            .0
+            .lock()
+            .map_err(|_| "file selection unavailable")?;
+        if paths.iter().any(|path| !allowed.contains(path)) {
+            return Err("请通过文件选择窗口重新添加附件。".into());
+        }
+    }
+    let root = PathBuf::from(&data_dir)
+        .canonicalize()
+        .map_err(|_| "workspace unavailable")?;
+    let workitem_id = next_workitem_id();
+    let workitem_dir = root.join("workitems").join(&workitem_id);
+    let evidence_dir = root.join("evidence").join(&workitem_id);
+    fs::create_dir(&workitem_dir).map_err(|_| "cannot create work item")?;
+    if !attachments.is_empty() {
+        fs::create_dir(&evidence_dir).map_err(|_| "cannot create evidence folder")?;
+    }
+    let mut request_attachments = Vec::new();
+    let mut total = 0_u64;
+    for (index, (attachment, source)) in attachments.iter().zip(paths.iter()).enumerate() {
+        let bytes = fs::read(source).map_err(|_| "selected file unavailable")?;
+        total += bytes.len() as u64;
+        if total > MAX_TOTAL_BYTES || bytes.len() as u64 > MAX_FILE_BYTES {
+            return Err("附件大小超过限制，请重新选择较小文件。".into());
+        }
+        let original_name = source
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| "invalid file name".to_string())?;
+        let name = if index == 0 {
+            original_name.to_string()
+        } else {
+            format!("{}-{original_name}", index + 1)
+        };
+        let destination = evidence_dir.join(&name);
+        fs::write(&destination, bytes).map_err(|_| "cannot save evidence")?;
+        request_attachments.push(json!({
+            "name": name,
+            "relative_path": format!("evidence/{workitem_id}/{name}"),
+            "extracted_text": attachment.extracted_text.chars().take(30_000).collect::<String>(),
+            "extraction_status": attachment.extraction_status,
+        }));
+    }
+    let payload = json!({
+        "id": workitem_id,
+        "request": request.trim(),
+        "channel": channel,
+        "attachments": request_attachments,
+    });
+    fs::write(
+        workitem_dir.join("request.json"),
+        serde_json::to_vec_pretty(&payload).map_err(|_| "cannot save request")?,
+    )
+    .map_err(|_| "cannot save request")?;
+    let request_path = workitem_dir
+        .join("request.json")
+        .to_string_lossy()
+        .into_owned();
+    invoke_runtime(
+        &app,
+        "plan",
+        Some(data_dir),
+        None,
+        vec!["--request-file".into(), request_path],
+    )
+    .await
+}
+
+#[tauri::command]
+async fn build_workplan(app: AppHandle, workitem_id: String) -> Result<Value, String> {
+    if !workitem_id.starts_with("WI-")
+        || !workitem_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        return Err("invalid work item".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let request_path = PathBuf::from(&data_dir)
+        .join("workitems")
+        .join(&workitem_id)
+        .join("request.json");
+    if !request_path.is_file() || request_path.is_symlink() {
+        return Err("work item unavailable".into());
+    }
+    invoke_runtime(
+        &app,
+        "plan",
+        Some(data_dir),
+        None,
+        vec![
+            "--request-file".into(),
+            request_path.to_string_lossy().into_owned(),
+        ],
+    )
+    .await
+}
+
+#[tauri::command]
+async fn set_role_active(app: AppHandle, role_id: String, active: bool) -> Result<Value, String> {
+    let data_dir = require_workspace(&app)?;
+    invoke_runtime(
+        &app,
+        "set-role",
+        Some(data_dir),
+        None,
+        vec![
+            "--role-id".into(),
+            role_id,
+            "--active".into(),
+            active.to_string(),
+        ],
+    )
+    .await
+}
+
+fn valid_workitem_id(workitem_id: &str) -> bool {
+    workitem_id.starts_with("WI-")
+        && workitem_id.len() <= 68
+        && workitem_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+#[tauri::command]
+async fn save_workitem_result(
+    app: AppHandle,
+    workitem_id: String,
+    content: String,
+) -> Result<String, String> {
+    if !valid_workitem_id(&workitem_id) || content.len() > 1_000_000 {
+        return Err("result is too large or invalid".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let health = invoke_runtime(&app, "health", Some(data_dir.clone()), None, Vec::new()).await?;
+    if health.get("code").and_then(Value::as_i64) != Some(0) {
+        return Err("workspace unavailable".into());
+    }
+    let output_dir = PathBuf::from(data_dir).join("outputs");
+    if !output_dir.is_dir() || output_dir.is_symlink() {
+        return Err("output folder unavailable".into());
+    }
+    let destination = output_dir.join(format!("{workitem_id}.md"));
+    if destination.is_symlink() {
+        return Err("output file unavailable".into());
+    }
+    fs::write(destination, content).map_err(|_| "cannot save result".to_string())?;
+    Ok("已保存到本机成果目录。".into())
+}
+
+#[tauri::command]
+async fn export_workitem_result(
+    app: AppHandle,
+    workitem_id: String,
+    content: String,
+) -> Result<Option<String>, String> {
+    if !valid_workitem_id(&workitem_id) || content.len() > 1_000_000 {
+        return Err("result is too large or invalid".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let selected = app
+            .dialog()
+            .file()
+            .set_title("导出 Sayelf 工作成果")
+            .set_file_name(format!("{workitem_id}.md"))
+            .add_filter("Markdown", &["md"])
+            .blocking_save_file();
+        let Some(selected) = selected else {
+            return Ok(None);
+        };
+        let destination = selected
+            .into_path()
+            .map_err(|_| "invalid output path".to_string())?;
+        fs::write(&destination, content).map_err(|_| "cannot export result".to_string())?;
+        Ok(Some(destination.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|_| "save dialog unavailable")?
+}
+
 fn main() {
     tauri::Builder::default()
+        .manage(PickedFiles::default())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             check_environment,
             initialize_workspace,
-            choose_data_directory
+            choose_data_directory,
+            choose_evidence_files,
+            read_selected_evidence,
+            create_workitem,
+            build_workplan,
+            set_role_active,
+            save_workitem_result,
+            export_workitem_result
         ])
         .run(tauri::generate_context!())
         .expect("Sayelf Agent Ops desktop failed to start");

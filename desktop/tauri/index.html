@@ -10,7 +10,11 @@
   </head>
   <body>
     <main class="shell">
-      <header class="brand"><img class="brand-logo" src="/sayelf-logo.png" alt="山野精灵 Sayelf 标志" /><div><p class="eyebrow">SAYELF · AGENT OPS</p><h1>最少岗位，专业闭环。</h1></div></header>
+      <header class="brand">
+        <img class="brand-logo" src="/sayelf-logo.png" alt="山野精灵 Sayelf 标志" />
+        <div><p class="eyebrow">SAYELF · AGENT OPS</p><h1>最少岗位，专业闭环。</h1></div>
+      </header>
+
       <section class="card" aria-labelledby="setup-title">
         <div class="heading"><div><p class="eyebrow">首次设置</p><h2 id="setup-title">准备你的工作空间</h2></div><span id="status-pill" class="pill">检查中</span></div>
         <p class="intro">选择一个行业包，Sayelf 会在本机准备好工作空间并检查运行状态。</p>
@@ -20,12 +24,61 @@
         <button id="initialize" class="primary">开始设置</button>
         <p id="message" class="message" role="status" aria-live="polite">正在检查本机环境…</p>
       </section>
+
       <section class="card health-card" aria-labelledby="health-title">
         <div class="heading"><div><p class="eyebrow">本机状态</p><h2 id="health-title">环境检查</h2></div><button id="recheck" class="secondary">重新检查</button></div>
         <ul id="checks" class="checks"><li><span>本地数据库</span><span>—</span></li><li><span>数据目录</span><span>—</span></li><li><span>Agent Ops Core</span><span>—</span></li><li><span>角色与技能注册表</span><span>—</span></li></ul>
-        <p class="note">Sprint 01 当前提供规划与路由基线。任务执行器和团队服务器尚未开放。</p>
+        <p class="note">本地解析、角色路由和工作方案可用。自动创作执行器与团队服务器尚未开放。</p>
       </section>
-      <footer>你的工作数据保存在这台设备上。应用更新和卸载不会删除工作数据。</footer>
+
+      <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
+        <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
+        <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会识别材料并推荐合适角色。</p>
+
+        <div class="role-panel">
+          <div class="role-heading"><div><label>角色管理</label><p class="subtle">启用后，角色才能为任务生成工作方案。</p></div></div>
+          <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
+        </div>
+
+        <form id="request-form">
+          <label for="channel">发布平台</label>
+          <select id="channel" required>
+            <option value="小红书">小红书</option>
+            <option value="公众号">公众号</option>
+            <option value="视频号">视频号</option>
+            <option value="抖音">抖音</option>
+            <option value="通用媒体内容">通用媒体内容</option>
+          </select>
+
+          <label for="request">你准备做什么？</label>
+          <textarea id="request" rows="5" maxlength="20000" required placeholder="例如：根据这些照片和产品资料，写一篇小红书新品体验笔记，包含标题、正文和话题标签。"></textarea>
+
+          <div class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个文件不超过 15 MiB，最多 5 个。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
+          <ul id="attachment-list" class="attachment-list"><li class="subtle empty-attachments">还没有添加材料</li></ul>
+
+          <button id="create-workitem" class="primary" type="submit">识别需求并生成工作方案</button>
+          <p id="work-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+
+        <div id="activation-prompt" class="activation-prompt" hidden>
+          <div><strong id="suggested-role-name"></strong><p id="suggested-role-reason" class="subtle"></p></div>
+          <button id="activate-and-continue" class="primary" type="button">激活角色并生成方案</button>
+        </div>
+      </section>
+
+      <section id="result-card" class="card result-card" aria-labelledby="result-title" hidden>
+        <div class="heading"><div><p class="eyebrow">工作成果出口</p><h2 id="result-title">工作方案</h2></div><span id="result-state" class="pill">已规划</span></div>
+        <p id="result-summary" class="intro"></p>
+        <label for="result-content">可编辑成果（Markdown）</label>
+        <textarea id="result-content" class="result-editor" rows="18" spellcheck="false"></textarea>
+        <div class="result-actions">
+          <button id="save-result" class="primary" type="button">保存到成果目录</button>
+          <button id="export-result" class="secondary" type="button">另存为…</button>
+        </div>
+        <p id="result-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer>需求材料、文字识别和成果都保存在本机。当前生成的是工作方案，自动创作和平台发布尚未连接。</footer>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

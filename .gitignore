@@ -5,6 +5,7 @@ __pycache__/
 dist/
 build/
 /desktop/tauri/node_modules/
+/desktop/tauri/public/ocr/
 /desktop/tauri/src-tauri/target/
 /desktop/tauri/src-tauri/binaries/*
 /desktop/tauri/src-tauri/gen/

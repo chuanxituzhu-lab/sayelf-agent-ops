@@ -15,6 +15,17 @@ class RegistryAndStateTests(unittest.TestCase):
         self.assertEqual(0, registry.active_roles)
         self.assertEqual(0, registry.loaded_skills)
 
+    def test_roles_activate_explicitly_and_can_be_deactivated(self):
+        registry = build_default_registry()
+        role_id = "media.content-planner"
+        registry.activate_role(role_id)
+        self.assertEqual(1, registry.active_roles)
+        self.assertIn(role_id, registry.active_role_ids)
+        registry.deactivate_role(role_id)
+        self.assertEqual(0, registry.active_roles)
+        with self.assertRaisesRegex(KeyError, "UNKNOWN_ROLE"):
+            registry.activate_role("media.missing")
+
     def test_custom_industry_pack_routes_without_core_changes(self):
         role = RoleContract(
             id="research.editor",

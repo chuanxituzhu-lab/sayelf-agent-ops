@@ -6,7 +6,7 @@
   "scripts": {
     "tauri": "tauri",
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "node scripts/prepare-ocr-assets.mjs && vite build",
     "tauri:build": "tauri build"
   },
   "devDependencies": {
@@ -15,6 +15,10 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.9.0",
-    "@tauri-apps/plugin-dialog": "^2.4.0"
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tesseract.js-data/chi_sim": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "pdfjs-dist": "6.3.289",
+    "tesseract.js": "7.0.0"
   }
 }
