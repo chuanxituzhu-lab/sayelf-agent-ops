@@ -49,7 +49,15 @@ def main():
         assert output.returncode == result["code"] == 10
         assert result["data"]["reason"] == "FOREIGN_DATA"
         assert (foreign_root / "keep.txt").read_text() == "unchanged"
-    print("Frozen sidecar: missing-data / initialize / relaunch / health PASS; developer PATH absent")
+        media_root = Path(temporary) / "media workflow imports"
+        subprocess.run([str(binary), "initialize", "--data-dir", str(media_root), "--pack", "media"],
+                       env=environment, capture_output=True, text=True, check=True, timeout=45)
+        output = subprocess.run([str(binary), "provider-test", "--data-dir", str(media_root)], env=environment,
+                                capture_output=True, text=True, timeout=45)
+        result = json.loads(output.stdout)
+        assert output.returncode == result["code"] == 10, result
+        assert result["data"]["reason"] == "MODEL_NOT_CONFIGURED"
+    print("Frozen sidecar: bootstrap, migration guard, and media adapter imports PASS; developer PATH absent")
 
 
 if __name__ == "__main__":

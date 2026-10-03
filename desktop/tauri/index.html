@@ -28,7 +28,7 @@
       <section class="card health-card" aria-labelledby="health-title">
         <div class="heading"><div><p class="eyebrow">本机状态</p><h2 id="health-title">环境检查</h2></div><button id="recheck" class="secondary">重新检查</button></div>
         <ul id="checks" class="checks"><li><span>本地数据库</span><span>—</span></li><li><span>数据目录</span><span>—</span></li><li><span>Agent Ops Core</span><span>—</span></li><li><span>角色与技能注册表</span><span>—</span></li></ul>
-        <p class="note">本地解析、角色路由和工作方案可用。自动创作执行器与团队服务器尚未开放。</p>
+        <p class="note">需求识别与本地工作方案无需联网。配置 AI 服务后可生成内容；平台发布仍由你手动完成。</p>
       </section>
 
       <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
@@ -36,9 +36,26 @@
         <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>
 
         <div class="role-panel">
-          <div class="role-heading"><div><label>角色管理</label><p class="subtle">启用后，角色才能为任务生成工作方案。</p></div></div>
+          <div class="role-heading"><div><label>角色管理</label><p class="subtle">完整内容流程会依次使用内容策划、内容制作和运营增长。</p></div><button id="activate-media-team" class="secondary" type="button">启用完整内容流程</button></div>
           <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
         </div>
+
+        <details class="provider-settings">
+          <summary>AI 服务设置 <span id="provider-status" class="subtle">尚未配置</span></summary>
+          <p class="subtle">使用兼容 Chat Completions 的服务地址。密钥保存在 Windows 凭据管理器或 macOS 钥匙串。</p>
+          <form id="provider-form">
+            <label for="provider-endpoint">兼容接口服务地址</label>
+            <input id="provider-endpoint" type="url" maxlength="2048" placeholder="https://服务地址/v1；接口需兼容 Chat Completions" required />
+            <label for="provider-model">模型名称</label>
+            <input id="provider-model" maxlength="200" placeholder="由模型服务提供" required />
+            <label for="provider-key">API 密钥</label>
+            <input id="provider-key" type="password" maxlength="4096" autocomplete="new-password" required />
+            <button id="save-provider" class="secondary" type="submit">保存并测试连接</button>
+            <button id="clear-provider" class="secondary" type="button">清除 AI 服务设置</button>
+            <p id="provider-message" class="message" role="status" aria-live="polite"></p>
+          </form>
+          <p class="note">连接测试只发送固定测试文本。生成内容前，Sayelf 会显示本次发送的服务地址和文字范围，并要求再次确认。</p>
+        </details>
 
         <form id="request-form">
           <label for="channel">发布平台</label>
@@ -69,16 +86,37 @@
       <section id="result-card" class="card result-card" aria-labelledby="result-title" hidden>
         <div class="heading"><div><p class="eyebrow">工作成果出口</p><h2 id="result-title">工作方案</h2></div><span id="result-state" class="pill">已规划</span></div>
         <p id="result-summary" class="intro"></p>
+        <div id="execution-panel" class="execution-panel" hidden>
+          <p id="provider-target" class="subtle"></p>
+          <label class="consent-row"><input id="provider-consent" type="checkbox" /> 我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。</label>
+          <button id="run-media-workflow" class="primary" type="button">生成内容与平台发布包</button>
+          <p id="execution-message" class="message" role="status" aria-live="polite"></p>
+        </div>
         <label for="result-content">可编辑成果（Markdown）</label>
         <textarea id="result-content" class="result-editor" rows="18" spellcheck="false"></textarea>
         <div class="result-actions">
           <button id="save-result" class="primary" type="button">保存到成果目录</button>
           <button id="export-result" class="secondary" type="button">另存为…</button>
+          <button id="approve-publish-package" class="secondary" type="button" hidden>确认成果并生成发布包</button>
         </div>
+        <section id="performance-panel" class="performance-panel" hidden aria-labelledby="performance-title">
+          <div><p class="eyebrow">发布后复盘</p><h3 id="performance-title">记录内容表现</h3></div>
+          <p class="subtle">从平台手动填写数据。系统只在本机计算比例，不连接平台账号，也不发送给模型。</p>
+          <form id="performance-form" class="performance-form">
+            <label for="metric-views">浏览量 <span aria-hidden="true">*</span></label><input id="metric-views" type="number" min="1" max="1000000000000" step="1" required />
+            <label for="metric-likes">点赞</label><input id="metric-likes" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-saves">收藏</label><input id="metric-saves" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-comments">评论</label><input id="metric-comments" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-shares">分享</label><input id="metric-shares" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <button id="save-performance" class="secondary" type="submit">保存本机复盘记录</button>
+          </form>
+          <p id="performance-message" class="message" role="status" aria-live="polite"></p>
+          <textarea id="performance-output" class="performance-output" rows="12" readonly hidden aria-label="本机内容表现复盘"></textarea>
+        </section>
         <p id="result-message" class="message" role="status" aria-live="polite"></p>
       </section>
 
-      <footer>需求材料、文字识别和成果都保存在本机。当前生成的是工作方案，自动创作和平台发布尚未连接。</footer>
+      <footer>需求材料、文字识别和成果都保存在本机。使用云端模型前会逐次确认发送内容；发布包由你手动发布。</footer>
     </main>
     <script type="module" src="/src/main.js"></script>
   </body>

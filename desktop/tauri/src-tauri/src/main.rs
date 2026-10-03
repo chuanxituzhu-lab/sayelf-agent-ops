@@ -66,6 +66,17 @@ async fn invoke_runtime(
     pack: Option<String>,
     extra_args: Vec<String>,
 ) -> Result<Value, String> {
+    invoke_runtime_with_key(app, action, data_dir, pack, extra_args, None).await
+}
+
+async fn invoke_runtime_with_key(
+    app: &AppHandle,
+    action: &str,
+    data_dir: Option<String>,
+    pack: Option<String>,
+    extra_args: Vec<String>,
+    api_key: Option<String>,
+) -> Result<Value, String> {
     let shell = app.shell();
     let mut command = shell
         .sidecar("sayelf-runtime")
@@ -79,6 +90,9 @@ async fn invoke_runtime(
     }
     for argument in extra_args {
         command = command.arg(argument);
+    }
+    if let Some(api_key) = api_key.as_ref() {
+        command = command.env("SAYELF_MODEL_API_KEY", api_key);
     }
     let output = command.output().await.map_err(|_| "runtime unavailable")?;
     let mut response: Value =
@@ -413,6 +427,250 @@ async fn set_role_active(app: AppHandle, role_id: String, active: bool) -> Resul
     .await
 }
 
+fn provider_credential() -> Result<keyring::Entry, String> {
+    keyring::Entry::new("sayelf.agent-ops", "model-provider-api-key")
+        .map_err(|_| "无法访问系统安全凭据库。".to_string())
+}
+
+fn valid_provider_endpoint(endpoint: &str) -> bool {
+    if endpoint.len() > 2048
+        || endpoint.contains(['@', '?', '#', '\\', '\n', '\r', ' '])
+        || endpoint.ends_with('/')
+    {
+        return false;
+    }
+    let lower = endpoint.to_ascii_lowercase();
+    if lower.starts_with("https://") {
+        return endpoint[8..]
+            .split('/')
+            .next()
+            .is_some_and(|host| !host.is_empty());
+    }
+    ["http://localhost", "http://127.0.0.1", "http://[::1]"]
+        .iter()
+        .any(|prefix| lower.starts_with(&format!("{prefix}:")) || lower == *prefix)
+}
+
+#[tauri::command]
+async fn configure_ai_provider(
+    app: AppHandle,
+    endpoint: String,
+    model: String,
+    api_key: String,
+) -> Result<Value, String> {
+    if !valid_provider_endpoint(&endpoint)
+        || model.trim().is_empty()
+        || model.chars().count() > 200
+        || api_key.trim().is_empty()
+        || api_key.len() > 4096
+        || api_key.contains(['\0', '\n', '\r'])
+    {
+        return Err("请检查服务地址、模型名称和密钥。远程服务必须使用 HTTPS。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let entry = provider_credential()?;
+    let previous_key = entry.get_password().ok();
+    entry
+        .set_password(api_key.trim())
+        .map_err(|_| "无法将密钥保存到系统安全凭据库。".to_string())?;
+    let configured = invoke_runtime(
+        &app,
+        "provider-config",
+        Some(data_dir),
+        None,
+        vec!["--endpoint".into(), endpoint, "--model".into(), model],
+    )
+    .await;
+    match configured {
+        Ok(response) if response.get("code").and_then(Value::as_i64) == Some(0) => Ok(response),
+        Ok(response) => {
+            restore_provider_key(&entry, previous_key);
+            Err(response
+                .get("msg")
+                .and_then(Value::as_str)
+                .unwrap_or("AI 服务设置失败。")
+                .to_string())
+        }
+        Err(error) => {
+            restore_provider_key(&entry, previous_key);
+            Err(error)
+        }
+    }
+}
+
+fn restore_provider_key(entry: &keyring::Entry, previous: Option<String>) {
+    match previous {
+        Some(value) => {
+            let _ = entry.set_password(&value);
+        }
+        None => {
+            let _ = entry.delete_credential();
+        }
+    }
+}
+
+#[tauri::command]
+async fn ai_provider_status(app: AppHandle) -> Result<Value, String> {
+    let data_dir = require_workspace(&app)?;
+    let mut response =
+        invoke_runtime(&app, "provider-status", Some(data_dir), None, Vec::new()).await?;
+    if let Some(data) = response.get_mut("data") {
+        data["credential_available"] = json!(provider_credential()
+            .and_then(|entry| entry
+                .get_password()
+                .map_err(|_| "credential unavailable".to_string()))
+            .is_ok());
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+async fn clear_ai_provider(app: AppHandle) -> Result<Value, String> {
+    let data_dir = require_workspace(&app)?;
+    let entry = provider_credential()?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => {}
+        Err(_) => return Err("无法从系统安全凭据库清除密钥。".into()),
+    }
+    let response = invoke_runtime(&app, "provider-clear", Some(data_dir), None, Vec::new()).await?;
+    if response.get("code").and_then(Value::as_i64) != Some(0) {
+        return Err(response
+            .get("msg")
+            .and_then(Value::as_str)
+            .unwrap_or("AI 服务设置清除失败。")
+            .to_string());
+    }
+    Ok(response)
+}
+
+#[tauri::command]
+async fn test_ai_provider(app: AppHandle) -> Result<Value, String> {
+    let data_dir = require_workspace(&app)?;
+    let api_key = provider_credential()?
+        .get_password()
+        .map_err(|_| "请先保存 AI 服务密钥。".to_string())?;
+    invoke_runtime_with_key(
+        &app,
+        "provider-test",
+        Some(data_dir),
+        None,
+        Vec::new(),
+        Some(api_key),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn execute_media_workflow(
+    app: AppHandle,
+    workitem_id: String,
+    consent_to_provider: bool,
+    resume_run_id: Option<String>,
+) -> Result<Value, String> {
+    if !valid_workitem_id(&workitem_id) {
+        return Err("工作单编号无效。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let api_key = provider_credential()?
+        .get_password()
+        .map_err(|_| "请先保存 AI 服务密钥。".to_string())?;
+    let mut arguments = vec!["--workitem-id".into(), workitem_id];
+    if consent_to_provider {
+        arguments.push("--allow-external".into());
+    }
+    if let Some(run_id) = resume_run_id {
+        arguments.push("--resume-run-id".into());
+        arguments.push(run_id);
+    }
+    invoke_runtime_with_key(
+        &app,
+        "execute-media",
+        Some(data_dir),
+        None,
+        arguments,
+        Some(api_key),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn approve_and_export_media_package(
+    app: AppHandle,
+    workitem_id: String,
+    content: String,
+) -> Result<Value, String> {
+    if !valid_workitem_id(&workitem_id) || content.trim().is_empty() || content.len() > 1_000_000 {
+        return Err("成果内容为空、过大或工作单编号无效。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let workitem_dir = PathBuf::from(&data_dir)
+        .join("workitems")
+        .join(&workitem_id);
+    if !workitem_dir.is_dir() || workitem_dir.is_symlink() {
+        return Err("本机工作单不可用。".into());
+    }
+    let content_path = workitem_dir.join("review-current.md");
+    if content_path.is_symlink() {
+        return Err("本机审核文件不可用。".into());
+    }
+    fs::write(&content_path, content).map_err(|_| "无法保存待审核成果。".to_string())?;
+    invoke_runtime(
+        &app,
+        "approve-export",
+        Some(data_dir),
+        None,
+        vec![
+            "--workitem-id".into(),
+            workitem_id,
+            "--content-file".into(),
+            content_path.to_string_lossy().into_owned(),
+        ],
+    )
+    .await
+}
+
+#[tauri::command]
+async fn record_media_performance(
+    app: AppHandle,
+    workitem_id: String,
+    metrics: Value,
+) -> Result<Value, String> {
+    if !valid_workitem_id(&workitem_id) {
+        return Err("工作单编号无效。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let workitem_dir = PathBuf::from(&data_dir)
+        .join("workitems")
+        .join(&workitem_id);
+    if !workitem_dir.is_dir() || workitem_dir.is_symlink() {
+        return Err("本机工作单不可用。".into());
+    }
+    let metrics_path = workitem_dir.join("performance-current.json");
+    if metrics_path.is_symlink() {
+        return Err("本机复盘文件不可用。".into());
+    }
+    let serialized = serde_json::to_vec(&metrics).map_err(|_| "复盘数据格式无效。".to_string())?;
+    if serialized.len() > 16_384 {
+        return Err("复盘数据超出允许大小。".into());
+    }
+    fs::write(&metrics_path, serialized).map_err(|_| "无法保存本机复盘数据。".to_string())?;
+    let result = invoke_runtime(
+        &app,
+        "performance-review",
+        Some(data_dir),
+        None,
+        vec![
+            "--workitem-id".into(),
+            workitem_id,
+            "--metrics-file".into(),
+            metrics_path.to_string_lossy().into_owned(),
+        ],
+    )
+    .await;
+    let _ = fs::remove_file(metrics_path);
+    result
+}
+
 fn valid_workitem_id(workitem_id: &str) -> bool {
     workitem_id.starts_with("WI-")
         && workitem_id.len() <= 68
@@ -491,6 +749,13 @@ fn main() {
             create_workitem,
             build_workplan,
             set_role_active,
+            configure_ai_provider,
+            ai_provider_status,
+            clear_ai_provider,
+            test_ai_provider,
+            execute_media_workflow,
+            approve_and_export_media_package,
+            record_media_performance,
             save_workitem_result,
             export_workitem_result
         ])

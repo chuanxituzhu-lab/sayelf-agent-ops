@@ -7,6 +7,11 @@ let ready = false;
 let selectedEvidence = [];
 let currentWorkItemId = null;
 let pendingRoleId = null;
+let currentRunId = null;
+let currentResultVersion = null;
+let currentIsGeneratedDraft = false;
+let approvedPackage = false;
+let providerConfig = { configured: false, endpoint: "", model: "" };
 
 const labels = {
   database: "本地数据库",
@@ -79,8 +84,59 @@ function render(data) {
   $("workbench").hidden = data.pack !== "media";
   if (data.pack === "media") {
     setMessage("message", `本地环境已就绪。${data.roles.length} 个媒体角色已注册；角色需要激活后才会接收工作。`);
+    void refreshProviderStatus();
   } else {
     setMessage("message", "本地环境已就绪。当前桌面需求工作流优先支持自媒体公司，请在首次设置时选择“内容与媒体”。");
+  }
+}
+
+async function refreshProviderStatus() {
+  try {
+    const result = await invoke("ai_provider_status");
+    if (result.code !== 0) throw new Error(result.msg || "读取失败");
+    providerConfig = result.data;
+    $("provider-status").textContent = providerConfig.configured
+      ? (providerConfig.credential_available ? `已配置 · ${providerConfig.model}` : "服务信息已保存，请重新输入密钥")
+      : "尚未配置";
+    if (providerConfig.configured) {
+      $("provider-endpoint").value = providerConfig.endpoint;
+      $("provider-model").value = providerConfig.model;
+    }
+    updateExecutionPanel();
+  } catch {
+    providerConfig = { configured: false, endpoint: "", model: "" };
+    $("provider-status").textContent = "读取失败";
+    updateExecutionPanel();
+  }
+}
+
+function providerIsLocal() {
+  if (!providerConfig.configured || !providerConfig.credential_available) return false;
+  try { return ["localhost", "127.0.0.1", "::1", "[::1]"].includes(new URL(providerConfig.endpoint).hostname); }
+  catch { return false; }
+}
+
+function updateExecutionPanel() {
+  if (!currentWorkItemId || currentIsGeneratedDraft) return;
+  const panel = $("execution-panel");
+  if (!panel) return;
+  panel.hidden = false;
+  const button = $("run-media-workflow");
+  const consent = $("provider-consent");
+  if (!providerConfig.configured || !providerConfig.credential_available) {
+    $("provider-target").textContent = providerConfig.configured
+      ? "服务信息已保存，请在“AI 服务设置”中重新输入密钥并测试连接。"
+      : "先在“AI 服务设置”中填写兼容接口地址、模型和密钥。";
+    button.disabled = true;
+    consent.disabled = true;
+  } else {
+    const local = providerIsLocal();
+    $("provider-target").textContent = local
+      ? `本机模型：${providerConfig.endpoint} · ${providerConfig.model}。本次只读取工作单文字和 OCR 文字。`
+      : `本次将把工作单文字和 OCR 提取文字发送至：${providerConfig.endpoint}（${providerConfig.model}）。原始附件不会发送。`;
+    consent.disabled = local;
+    button.disabled = !local && !consent.checked;
+    button.textContent = currentRunId ? "从失败步骤继续生成" : "生成内容与平台发布包";
   }
 }
 
@@ -195,16 +251,63 @@ function showActivation(result) {
 
 function showResult(data) {
   currentWorkItemId = data.workitem_id;
+  currentRunId = data.run_id || null;
+  currentResultVersion = data.version || null;
+  currentIsGeneratedDraft = Boolean(data.platform_package);
+  approvedPackage = false;
   pendingRoleId = null;
   $("activation-prompt").hidden = true;
   $("result-card").hidden = false;
-  $("result-title").textContent = data.routing?.deliverable_type === "video-script" ? "短视频工作方案" : "工作方案";
-  $("result-state").textContent = "已规划 · 尚未执行";
-  $("result-summary").textContent = `工作单 ${data.workitem_id} · 建议角色：${data.routing?.role_name || "未指定"}。方案已保存到本机成果目录，可继续编辑后导出。`;
+  $("result-title").textContent = data.platform_package
+    ? `${data.channel || "媒体"}发布包 · v${data.version}`
+    : data.routing?.deliverable_type === "video-script" ? "短视频工作方案" : "工作方案";
+  $("result-state").textContent = data.platform_package ? "待人工审核" : "已规划 · 尚未执行";
+  $("result-summary").textContent = data.platform_package
+    ? `工作单 ${data.workitem_id} · 三个媒体岗位已完成草稿、视觉方案和平台发布检查；发布包尚未确认，也未发布。`
+    : `工作单 ${data.workitem_id} · 建议角色：${data.routing?.role_name || "未指定"}。方案已保存到本机成果目录，可继续生成内容并导出。`;
   $("result-content").value = data.result_content || "";
+  $("execution-panel").hidden = currentIsGeneratedDraft;
+  $("approve-publish-package").hidden = !currentIsGeneratedDraft;
+  $("approve-publish-package").textContent = "确认成果并生成发布包";
+  $("approve-publish-package").disabled = false;
+  $("performance-panel").hidden = true;
   renderRoles(data.roles || []);
   setMessage("result-message", `已保存：${data.output_name || `${data.workitem_id}.md`}`, false);
+  $("execution-message").textContent = "";
+  $("provider-consent").checked = false;
+  void refreshProviderStatus();
   $("result-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function runMediaWorkflow() {
+  if (!currentWorkItemId || !providerConfig.configured) return;
+  const button = $("run-media-workflow");
+  button.disabled = true;
+  button.textContent = currentRunId ? "正在从检查点继续…" : "正在生成三岗位成果…";
+  setMessage("execution-message", "每个岗位的完成结果都会保存在本机；失败时可从最后完成的步骤继续。", false);
+  try {
+    const result = await invoke("execute_media_workflow", {
+      workitemId: currentWorkItemId,
+      consentToProvider: !providerIsLocal() && $("provider-consent").checked,
+      resumeRunId: currentRunId,
+    });
+    if (result.code === 0) {
+      showResult(result.data);
+    } else if (result.code === 11 && result.data?.missing_roles) {
+      const names = result.data.missing_roles.join("、");
+      setMessage("execution-message", `请先点击“启用完整内容流程”，启用缺少的角色：${names}。`, true);
+    } else if (result.data?.run_id) {
+      currentRunId = result.data.run_id;
+      setMessage("execution-message", `${result.msg} 可确认后继续。${result.data.current_step || ""}`, true);
+      updateExecutionPanel();
+    } else {
+      setMessage("execution-message", result.msg || "内容工作流没有启动。", true);
+    }
+  } catch {
+    setMessage("execution-message", "内容工作流没有启动，请检查模型配置和本机工作空间。", true);
+  } finally {
+    updateExecutionPanel();
+  }
 }
 
 async function buildPlan(workitemId = currentWorkItemId) {
@@ -231,8 +334,10 @@ async function setRoleActive(roleId, active) {
     renderRoles(result.data.roles || []);
     if (pendingRoleId === roleId && active) await buildPlan();
     else setMessage("work-message", active ? "角色已激活，可处理匹配的工作。" : "角色已停用，不会接收新工作。", false);
+    return true;
   } catch (error) {
     setMessage("work-message", error instanceof Error ? error.message : "角色状态没有更新。", true);
+    return false;
   }
 }
 
@@ -304,6 +409,137 @@ $("request-form").addEventListener("submit", async (event) => {
 
 $("activate-and-continue").addEventListener("click", async () => {
   if (pendingRoleId) await setRoleActive(pendingRoleId, true);
+});
+
+$("activate-media-team").addEventListener("click", async () => {
+  const button = $("activate-media-team");
+  button.disabled = true;
+  const roles = ["media.content-planner", "media.creative-producer", "media.growth-operator"];
+  try {
+    let allActivated = true;
+    for (const roleId of roles) allActivated = (await setRoleActive(roleId, true)) && allActivated;
+    setMessage("work-message", allActivated
+      ? "完整内容流程已启用。现在可以选择工作方案并生成发布包。"
+      : "部分角色未能启用。请检查角色列表中的状态，再重试。", !allActivated);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("provider-consent").addEventListener("change", updateExecutionPanel);
+$("run-media-workflow").addEventListener("click", () => void runMediaWorkflow());
+$("result-content").addEventListener("input", () => {
+  if (approvedPackage) {
+    approvedPackage = false;
+    $("result-state").textContent = "有未审核修改";
+    $("approve-publish-package").textContent = "确认修改并更新发布包";
+    $("approve-publish-package").disabled = false;
+    $("performance-panel").hidden = true;
+  }
+});
+
+$("approve-publish-package").addEventListener("click", async () => {
+  if (!currentWorkItemId || !currentIsGeneratedDraft) return;
+  const button = $("approve-publish-package");
+  button.disabled = true;
+  button.textContent = "正在生成本机发布包…";
+  try {
+    const result = await invoke("approve_and_export_media_package", {
+      workitemId: currentWorkItemId,
+      content: $("result-content").value,
+    });
+    if (result.code !== 0) throw new Error(result.msg || "确认失败");
+    approvedPackage = true;
+    currentResultVersion = result.data.version;
+    $("result-state").textContent = "已确认 · 可手动发布";
+    button.textContent = "已确认，发布包已生成";
+    $("performance-panel").hidden = false;
+    setMessage("result-message", `发布包已保存到本机：${result.data.package_path}`, false);
+  } catch (error) {
+    button.textContent = "确认成果并生成发布包";
+    setMessage("result-message", error instanceof Error ? error.message : "发布包生成失败。", true);
+  } finally {
+    button.disabled = approvedPackage;
+  }
+});
+
+$("performance-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!currentWorkItemId || !approvedPackage) return;
+  const button = $("save-performance");
+  const metrics = Object.fromEntries([
+    ["views", "metric-views"], ["likes", "metric-likes"], ["saves", "metric-saves"],
+    ["comments", "metric-comments"], ["shares", "metric-shares"],
+  ].map(([key, id]) => [key, Number($(id).value || 0)]));
+  button.disabled = true;
+  button.textContent = "正在保存…";
+  try {
+    const result = await invoke("record_media_performance", { workitemId: currentWorkItemId, metrics });
+    if (result.code !== 0) throw new Error(result.msg || "复盘记录保存失败。");
+    const rates = result.data.rates;
+    setMessage("performance-message", `已保存到本机。互动率 ${(rates.engagement_rate * 100).toFixed(2)}%，收藏率 ${(rates.save_rate * 100).toFixed(2)}%。没有历史基线时不判断表现好坏。`, false);
+    $("performance-output").value = result.data.report_markdown;
+    $("performance-output").hidden = false;
+    $("performance-form").reset();
+    $("metric-likes").value = "0";
+    $("metric-saves").value = "0";
+    $("metric-comments").value = "0";
+    $("metric-shares").value = "0";
+    $("metric-views").focus();
+  } catch (error) {
+    setMessage("performance-message", error instanceof Error ? error.message : "复盘记录保存失败。", true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存本机复盘记录";
+  }
+});
+
+$("provider-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = $("save-provider");
+  const endpoint = $("provider-endpoint").value.trim();
+  const model = $("provider-model").value.trim();
+  const apiKey = $("provider-key").value;
+  if (!apiKey) {
+    setMessage("provider-message", "请输入 API 密钥。", true);
+    return;
+  }
+  button.disabled = true;
+  button.textContent = "正在保存并测试…";
+  try {
+    const saved = await invoke("configure_ai_provider", { endpoint, model, apiKey });
+    if (saved.code !== 0) throw new Error(saved.msg || "AI 服务设置失败。");
+    $("provider-key").value = "";
+    const tested = await invoke("test_ai_provider");
+    if (tested.code !== 0) throw new Error(tested.msg || "连接测试失败。");
+    setMessage("provider-message", "连接成功。密钥已保存在系统安全凭据库。", false);
+    await refreshProviderStatus();
+  } catch (error) {
+    setMessage("provider-message", error instanceof Error ? error.message : "AI 服务设置或连接测试失败。", true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "保存并测试连接";
+  }
+});
+
+$("clear-provider").addEventListener("click", async () => {
+  const button = $("clear-provider");
+  button.disabled = true;
+  try {
+    const result = await invoke("clear_ai_provider");
+    if (result.code !== 0) throw new Error(result.msg || "AI 服务设置清除失败。");
+    providerConfig = { configured: false, credential_available: false, endpoint: "", model: "" };
+    $("provider-endpoint").value = "";
+    $("provider-model").value = "";
+    $("provider-key").value = "";
+    $("provider-status").textContent = "尚未配置";
+    setMessage("provider-message", "AI 服务地址、模型和密钥已清除。", false);
+    updateExecutionPanel();
+  } catch (error) {
+    setMessage("provider-message", error instanceof Error ? error.message : "AI 服务设置清除失败。", true);
+  } finally {
+    button.disabled = false;
+  }
 });
 
 $("save-result").addEventListener("click", async () => {

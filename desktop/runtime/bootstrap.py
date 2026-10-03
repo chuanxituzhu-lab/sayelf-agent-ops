@@ -10,6 +10,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+from urllib.parse import urlsplit
 
 from sayelf_agent_ops.demo import run_first_vertical_slice
 from sayelf_agent_ops.models import WorkItem
@@ -19,8 +20,8 @@ from sayelf_agent_ops.router import Router
 from sayelf_agent_ops.state import StateEngine, WorkState
 
 APP_ID = "sayelf.agent-ops"
-SCHEMA = 2
-VERSION = "0.2.0"
+SCHEMA = 3
+VERSION = "0.3.0"
 DIRECTORIES = ("workitems", "outputs", "evidence", "logs", "backups")
 MESSAGES = {
     "SETUP_REQUIRED": "请选择行业包，完成首次初始化。",
@@ -33,6 +34,16 @@ MESSAGES = {
     "INSTALL_DIRECTORY": "请将业务数据保存在程序安装目录之外。",
     "ROLE_NOT_ACTIVE": "请先激活建议角色，再生成工作方案。",
     "INVALID_WORKITEM": "工作单或附件无效，请重新录入后再试。",
+    "MODEL_NOT_CONFIGURED": "尚未配置 AI 服务，请先填写兼容接口地址、模型名称和密钥。",
+    "MODEL_CONSENT_REQUIRED": "发送需求文字前，请确认本次数据发送范围和服务地址。",
+    "WORKFLOW_ROLES_REQUIRED": "请先启用内容策划、内容制作和运营增长三个角色。",
+    "WORKFLOW_INVALID": "内容工作流无法继续，请检查输入和工作空间状态。",
+    "MODEL_UNAVAILABLE": "模型服务暂时不可用；已保留已完成步骤，可以检查网络后继续。",
+    "MODEL_RATE_LIMITED": "模型服务请求频率受限；请稍后再试。",
+    "MODEL_REJECTED_REQUEST": "模型服务拒绝了请求；请检查接口地址、模型和服务配置。",
+    "MODEL_RESPONSE_INVALID": "模型返回内容未通过结构校验；请检查模型兼容性后重试。",
+    "MODEL_RESPONSE_TOO_LARGE": "模型返回内容过大，已拒绝保存。",
+    "MODEL_INPUT_TOO_LARGE": "本次材料过长，请减少附件或缩短需求后再试。",
 }
 
 
@@ -121,15 +132,89 @@ def _create_role_activation_table(connection, pack):
     )
 
 
-def _backup_before_migration(connection, root):
+def _create_execution_tables(connection):
+    statements = (
+        """CREATE TABLE IF NOT EXISTS ai_provider (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            endpoint TEXT NOT NULL,
+            model TEXT NOT NULL,
+            timeout_seconds INTEGER NOT NULL DEFAULT 90,
+            updated_at TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS workflow_runs (
+            run_id TEXT PRIMARY KEY,
+            workitem_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            current_step TEXT,
+            endpoint TEXT NOT NULL,
+            model TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            error_code TEXT
+        )""",
+        "CREATE INDEX IF NOT EXISTS workflow_runs_workitem ON workflow_runs(workitem_id, created_at)",
+        """CREATE TABLE IF NOT EXISTS workflow_events (
+            event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            step TEXT,
+            state TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY(run_id) REFERENCES workflow_runs(run_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS workflow_stages (
+            run_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            output_json TEXT NOT NULL,
+            output_sha256 TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(run_id, stage),
+            FOREIGN KEY(run_id) REFERENCES workflow_runs(run_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS workflow_results (
+            workitem_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            run_id TEXT NOT NULL,
+            content_json TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            review_state TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(workitem_id, version),
+            FOREIGN KEY(run_id) REFERENCES workflow_runs(run_id)
+        )""",
+        """CREATE TABLE IF NOT EXISTS workflow_approvals (
+            workitem_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            decision TEXT NOT NULL,
+            actor TEXT NOT NULL,
+            content_sha256 TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY(workitem_id, version),
+            FOREIGN KEY(workitem_id, version)
+                REFERENCES workflow_results(workitem_id, version)
+        )""",
+        """CREATE TABLE IF NOT EXISTS performance_reviews (
+            review_id TEXT PRIMARY KEY,
+            workitem_id TEXT NOT NULL,
+            metrics_json TEXT NOT NULL,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )""",
+    )
+    for statement in statements:
+        connection.execute(statement)
+
+
+def _backup_before_migration(connection, root, source_schema):
     folder = root / "backups"
     if not folder.is_dir() or folder.is_symlink():
         raise BootstrapError("DATA_UNAVAILABLE")
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    destination = folder / f"runtime-schema-1-{stamp}.sqlite3"
+    destination = folder / f"runtime-schema-{source_schema}-{stamp}.sqlite3"
     suffix = 1
     while destination.exists():
-        destination = folder / f"runtime-schema-1-{stamp}-{suffix}.sqlite3"
+        destination = folder / f"runtime-schema-{source_schema}-{stamp}-{suffix}.sqlite3"
         suffix += 1
     backup = None
     try:
@@ -148,12 +233,18 @@ def _backup_before_migration(connection, root):
 def _ensure_current_schema(connection, root):
     metadata = _raw_metadata(connection)
     schema = int(metadata["schema"])
-    if schema == 1:
-        _backup_before_migration(connection, root)
+    while schema < SCHEMA:
+        _backup_before_migration(connection, root, schema)
         connection.execute("BEGIN IMMEDIATE")
         try:
-            _create_role_activation_table(connection, metadata["pack"])
-            connection.execute("UPDATE metadata SET value=? WHERE key='schema'", (str(SCHEMA),))
+            if schema == 1:
+                _create_role_activation_table(connection, metadata["pack"])
+            elif schema == 2:
+                _create_execution_tables(connection)
+            else:
+                raise BootstrapError("SCHEMA_UNSUPPORTED")
+            schema += 1
+            connection.execute("UPDATE metadata SET value=? WHERE key='schema'", (str(schema),))
             connection.execute("UPDATE metadata SET value=? WHERE key='version'", (VERSION,))
             connection.commit()
         except Exception:
@@ -162,7 +253,11 @@ def _ensure_current_schema(connection, root):
         metadata = _raw_metadata(connection)
     tables = {row[0] for row in connection.execute(
         "SELECT name FROM sqlite_master WHERE type='table'")}
-    if metadata.get("schema") != str(SCHEMA) or "role_activation" not in tables:
+    required_tables = {
+        "role_activation", "ai_provider", "workflow_runs", "workflow_events",
+        "workflow_stages", "workflow_results", "workflow_approvals", "performance_reviews",
+    }
+    if metadata.get("schema") != str(SCHEMA) or not required_tables.issubset(tables):
         raise BootstrapError("SCHEMA_UNSUPPORTED")
     return metadata
 
@@ -232,6 +327,7 @@ def initialize(path=None, pack="media", mode="personal"):
                 ("pack", pack), ("mode", mode),
             ])
             _create_role_activation_table(connection, pack)
+            _create_execution_tables(connection)
     return health(root)
 
 
@@ -241,6 +337,7 @@ def health(path=None):
         raise BootstrapError("SETUP_REQUIRED")
     with _opened(root) as connection:
         metadata = _ensure_current_schema(connection, root)
+        provider_configured = _provider_configured(connection)
         if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise BootstrapError("DATA_UNAVAILABLE")
         registry = _activate_registered_roles(connection, build_default_registry(), metadata["pack"])
@@ -267,11 +364,62 @@ def health(path=None):
         "checks": {"database": "ok", "directories": "ok", "core": "ok", "registry": "ok"},
         "roles": roles, "active_roles": registry.active_roles, "loaded_skills": 0,
         "capabilities": {
-            "executor": False, "team": False, "network_service": False,
+            "executor": True, "team": False, "network_service": False,
             "local_file_intake": True, "pdf_text_extraction": True,
             "image_ocr": True, "workplan_export": True,
+            "workflow_runs": True, "provider_configured": provider_configured,
         },
     }
+
+
+def _provider_configured(connection):
+    row = connection.execute(
+        "SELECT endpoint, model FROM ai_provider WHERE id=1"
+    ).fetchone()
+    return bool(row and row[0] and row[1])
+
+
+def provider_status(path):
+    status = health(path)
+    root = data_root(status["data_dir"])
+    with _opened(root) as connection:
+        row = connection.execute(
+            "SELECT endpoint, model, timeout_seconds FROM ai_provider WHERE id=1"
+        ).fetchone()
+    if not row:
+        return {"configured": False, "endpoint": "", "model": "", "timeout_seconds": 90}
+    return {
+        "configured": True,
+        "endpoint": row[0],
+        "model": row[1],
+        "timeout_seconds": row[2],
+    }
+
+
+def configure_provider(path, endpoint, model):
+    if not isinstance(endpoint, str) or not isinstance(model, str):
+        raise BootstrapError("INVALID_INPUT")
+    endpoint = endpoint.strip().rstrip("/")
+    model = model.strip()
+    if len(endpoint) > 2048 or len(model) > 200 or not model:
+        raise BootstrapError("INVALID_INPUT")
+    parsed = urlsplit(endpoint)
+    local_hosts = {"localhost", "127.0.0.1", "::1"}
+    if (
+        parsed.scheme != "https" and not (parsed.scheme == "http" and parsed.hostname in local_hosts)
+    ) or not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise BootstrapError("INVALID_INPUT")
+    status = health(path)
+    root = data_root(status["data_dir"])
+    with _opened(root) as connection:
+        connection.execute(
+            "INSERT INTO ai_provider (id, endpoint, model, timeout_seconds, updated_at) "
+            "VALUES (1, ?, ?, 90, ?) "
+            "ON CONFLICT(id) DO UPDATE SET endpoint=excluded.endpoint, model=excluded.model, "
+            "timeout_seconds=excluded.timeout_seconds, updated_at=excluded.updated_at",
+            (endpoint, model, datetime.now(timezone.utc).isoformat()),
+        )
+    return provider_status(root)
 
 
 def set_role_active(path, role_id, active):
@@ -484,13 +632,24 @@ def create_workplan(path, request_file):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Sayelf desktop bootstrap sidecar")
-    parser.add_argument("action", choices=("initialize", "health", "set-role", "plan"))
+    parser.add_argument("action", choices=(
+        "initialize", "health", "set-role", "plan", "provider-config",
+        "provider-status", "provider-clear", "provider-test", "execute-media", "approve-export",
+        "performance-review",
+    ))
     parser.add_argument("--data-dir")
     parser.add_argument("--pack", choices=("media", "engineering"), default="media")
     parser.add_argument("--mode", choices=("personal",), default="personal")
     parser.add_argument("--role-id")
     parser.add_argument("--active", choices=("true", "false"))
     parser.add_argument("--request-file")
+    parser.add_argument("--endpoint")
+    parser.add_argument("--model")
+    parser.add_argument("--workitem-id")
+    parser.add_argument("--content-file")
+    parser.add_argument("--metrics-file")
+    parser.add_argument("--allow-external", action="store_true")
+    parser.add_argument("--resume-run-id")
     args = parser.parse_args(argv)
     try:
         if args.action == "initialize":
@@ -504,6 +663,69 @@ def main(argv=None):
                 raise BootstrapError("INVALID_INPUT")
             data = set_role_active(args.data_dir, args.role_id, args.active == "true")
             result = {"code": 0, "msg": "角色状态已更新。", "data": data}
+        elif args.action == "provider-config":
+            data = configure_provider(args.data_dir, args.endpoint, args.model)
+            result = {"code": 0, "msg": "AI 服务地址与模型已保存；密钥由桌面端单独保管。", "data": data}
+        elif args.action == "provider-status":
+            data = provider_status(args.data_dir)
+            result = {"code": 0, "msg": "AI 服务配置已读取。", "data": data}
+        elif args.action == "provider-clear":
+            root = data_root(args.data_dir)
+            health(root)
+            with _opened(root) as connection:
+                connection.execute("DELETE FROM ai_provider WHERE id=1")
+            result = {"code": 0, "msg": "AI 服务配置已清除。", "data": {"configured": False}}
+        elif args.action in {"provider-test", "execute-media"}:
+            from desktop.runtime.media_workflow import execute_media_workflow, test_provider
+            from desktop.runtime.model_provider import OpenAICompatibleProvider
+
+            config = provider_status(args.data_dir)
+            api_key = os.environ.get("SAYELF_MODEL_API_KEY", "")
+            if not config["configured"] or not api_key:
+                raise BootstrapError("MODEL_NOT_CONFIGURED")
+            provider = OpenAICompatibleProvider(
+                config["endpoint"], config["model"], api_key, config["timeout_seconds"]
+            )
+            if args.action == "provider-test":
+                try:
+                    data = test_provider(provider)
+                    result = {"code": 0, "msg": data["message"], "data": data}
+                except Exception as error:
+                    reason = getattr(error, "code", "MODEL_UNAVAILABLE")
+                    result = {
+                        "code": 20,
+                        "msg": MESSAGES.get(reason, "模型服务测试失败，请检查配置后重试。"),
+                        "data": {"reason": reason},
+                    }
+            else:
+                if not args.workitem_id:
+                    raise BootstrapError("WORKFLOW_INVALID")
+                result = execute_media_workflow(
+                    args.data_dir, args.workitem_id, provider,
+                    allow_external=args.allow_external, resume_run_id=args.resume_run_id,
+                )
+        elif args.action == "approve-export":
+            from desktop.runtime.media_workflow import approve_and_export
+
+            workitem_id = _validate_workitem_id(args.workitem_id)
+            root = data_root(args.data_dir)
+            expected = root / "workitems" / workitem_id / "review-current.md"
+            supplied = Path(args.content_file or "")
+            if supplied.is_symlink() or supplied.resolve(strict=True) != expected.resolve(strict=True):
+                raise BootstrapError("WORKFLOW_INVALID")
+            content = supplied.read_text(encoding="utf-8")
+            result = approve_and_export(root, workitem_id, content)
+        elif args.action == "performance-review":
+            from desktop.runtime.media_workflow import record_performance_review
+
+            workitem_id = _validate_workitem_id(args.workitem_id)
+            root = data_root(args.data_dir)
+            expected = root / "workitems" / workitem_id / "performance-current.json"
+            supplied = Path(args.metrics_file or "")
+            if supplied.is_symlink() or supplied.resolve(strict=True) != expected.resolve(strict=True):
+                raise BootstrapError("WORKFLOW_INVALID")
+            metrics = json.loads(supplied.read_text(encoding="utf-8"))
+            result = record_performance_review(root, workitem_id, metrics)
         else:
             if args.request_file is None:
                 raise BootstrapError("INVALID_WORKITEM")
@@ -512,9 +734,14 @@ def main(argv=None):
         result = {"code": 10, "msg": MESSAGES[error.reason], "data": {"reason": error.reason}}
     except (OSError, sqlite3.Error, ValueError):
         result = {"code": 20, "msg": MESSAGES["DATA_UNAVAILABLE"], "data": {"reason": "DATA_UNAVAILABLE"}}
-    except Exception:
+    except Exception as error:
         # Never expose tracebacks, user inputs, paths or environment in errors.
-        result = {"code": 30, "msg": MESSAGES["CORE_UNHEALTHY"], "data": {"reason": "CORE_UNHEALTHY"}}
+        reason = getattr(error, "code", "CORE_UNHEALTHY")
+        result = {
+            "code": 20 if reason.startswith("MODEL_") else 30,
+            "msg": MESSAGES.get(reason, MESSAGES["CORE_UNHEALTHY"]),
+            "data": {"reason": reason},
+        }
     print(json.dumps(result, ensure_ascii=True))
     return result["code"]
 
