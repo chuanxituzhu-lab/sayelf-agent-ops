@@ -4,7 +4,7 @@ body { margin: 0; min-width: 360px; }
 .shell { width: min(760px, calc(100% - 40px)); margin: 58px auto 38px; }
 .brand, .heading, .location, .checks li { display: flex; align-items: center; justify-content: space-between; }
 .brand { justify-content: flex-start; gap: 15px; margin: 0 0 28px 4px; }
-.mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 14px; background: #244a38; color: #fff; font-size: 21px; font-weight: 700; }
+.brand-logo { width: 58px; height: 58px; flex: none; object-fit: cover; border: 1px solid #dce4dc; border-radius: 50%; box-shadow: 0 2px 8px #26382818; }
 .eyebrow { margin: 0 0 6px; color: #718378; font-size: 11px; font-weight: 700; letter-spacing: .13em; }
 h1 { margin: 0; font-size: 21px; letter-spacing: -.03em; } h2 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
 .card { padding: 28px 30px; margin: 0 0 16px; border: 1px solid #e4e9e2; border-radius: 18px; background: #fff; box-shadow: 0 8px 30px #26382808; }

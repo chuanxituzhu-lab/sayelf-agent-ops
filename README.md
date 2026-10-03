@@ -1,5 +1,7 @@
 # Sayelf Agent Ops
 
+![Sayelf 山野精灵 Logo](desktop/tauri/src-tauri/icons/128x128.png)
+
 **通用 Agent Ops 底座，自媒体公司优先落地。**
 
 Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗位和技能规划工作。Core 负责通用流程，Industry Pack 承载行业规则；第一条业务落地路线是自媒体公司的选题、内容策划与运营协作。

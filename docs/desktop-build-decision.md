@@ -54,3 +54,21 @@ Sources:
 15. WebUI: no change. Existing desktop setup/status UI remains the user interface; pack discovery and editing stay out of this slice.
 16. Simplest implementation: Python dataclasses, explicit imports at application bootstrap, registered predicates with numeric priority, and stdlib tests. No new dependency or runtime plugin loader.
 17. Not built: executor, AI routing, media-platform publishing, content generation, external Pack marketplace/loader, updater, team mode, or new industry pack beyond existing engineering examples.
+
+## Brand icon integration — 2026-10-03
+
+1. Task: integrate the user-provided Sayelf artwork as the desktop product logo and platform application icon.
+2. Closest capability: the setup page had a text-only “S” mark; Tauri already owns Windows, macOS, and installer icon paths. Use that existing icon pipeline rather than adding an image or icon dependency.
+3. Step 0: **Integrate**. Preserve the supplied artwork, add it to the desktop frontend and README, and generate the configured PNG / ICO / ICNS assets with the installed Tauri CLI.
+4. Measurable difference: the same brand image appears in the setup header, browser/app favicon, Windows installer/app icon, macOS app icon, and repository homepage; no separate brand assets or runtime dependency are introduced.
+5. Success evidence: verify the source asset and generated icon set; Vite production build includes the logo; Tauri/NSIS build succeeds; frozen Runtime and installer remain operational. macOS artifact generation still requires a native Mac builder.
+6. Minimum implementation: one source PNG, one frontend image reference, existing configured icon slots, and a README image. No redesign or new branding system.
+7. Boundaries: logo is a static frontend/package asset; it does not enter Core logic, runtime data, telemetry, or user task records.
+8. Data classification: **Public product-brand asset**. The user supplied it specifically for use as the Sayelf product logo. The PNG has no text or EXIF metadata; publish only the logo and mechanically derived desktop icon sizes.
+9. GitHub transfer: update the existing source PR and local branch only. Do not attach installer binaries or publish a release.
+10. Verification state: inspect source and generated assets → build frontend and Windows installer → verify local package checksum and Authenticode status → stage and scan source diff → update PR.
+11. Epistemic labels: Fact — the supplied PNG is 627×627 and opaque; generated sizes preserve its existing artwork. Fact — local Windows build is unsigned. Hypothesis — the round crop in the header remains legible at typical desktop sizes; verify in the packaged UI.
+12. Rollback: revert the branding commit and restore the previous text mark and icon files; no stored-data migration.
+13. WebUI: keep the current setup workflow; replace only its placeholder mark with the product logo.
+14. Simplest path: existing Tauri icon generator, static public image, and CSS sizing. No external service, image-processing package, or generated artwork.
+15. Not built: logo variants, background removal, animations, mobile branding, or public binary release.
