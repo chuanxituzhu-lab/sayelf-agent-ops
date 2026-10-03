@@ -1,0 +1,8 @@
+[project]
+name = "sayelf-agent-ops"
+version = "0.1.0a1"
+description = "Sayelf Agent Ops Sprint 01 baseline"
+requires-python = ">=3.11"
+
+[project.scripts]
+sayelf-agent-ops-demo = "sayelf_agent_ops.demo:main"
