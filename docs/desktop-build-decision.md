@@ -25,3 +25,32 @@ Sources:
 - https://v2.tauri.app/distribute/windows-installer/
 - https://v2.tauri.app/distribute/dmg/
 - https://pyinstaller.org/en/stable/operating-mode.html
+
+## README product positioning and download decision — 2026-10-03
+
+1. Task: make the repository homepage bilingual, explain the reusable Agent Ops Core and the first media-company vertical, and link each platform download to the latest release asset.
+2. Closest existing capability: this repository's WorkItem, router, planner, role/skill registries, State Engine, and media/engineering routing examples. GitHub ecosystem scan: [agent-ops-stack](https://github.com/ellmos-ai/agent-ops-stack) describes manifest-driven local composition; [agent-ops](https://github.com/InfiniteRoomLabs/agent-ops) describes role/scenario-based agents and playbooks; [agents](https://github.com/wshobson/agents) describes a multi-harness plugin marketplace. These are useful evidence that composition patterns exist, but they do not replace this repository's deliverable-first workflow and desktop baseline. Source inspection found the gap: Sprint 01 keeps media and engineering definitions in the default Registry and Router, with no dynamically loadable Pack boundary yet.
+3. Step 0: **Integrate**. Present the existing Core as a general product and media as the first business workflow. Document the Pack boundary as a target, not a completed runtime capability; engineering routing remains a baseline example. No new framework or Core is justified in this README/download scope.
+4. Measurable difference: one Chinese/English homepage documents the same implemented scope and provides three architecture-specific stable download URLs; no industry-specific engine fork is introduced.
+5. Success evidence: mirrored Chinese and English sections; all three URLs use GitHub's `/releases/latest/download/` route and match installer build names; implemented work and roadmap are explicitly separated. No release currently exists, so the README states that downloads become available after the first public release.
+6. Public content: reviewed generic project positioning, build names, and repository release URLs only. No user data, local logs, credentials, build outputs, or unsigned binaries are transferred. No public binary release is created by this change.
+
+## General Core and media-first Pack boundary — 2026-10-03
+
+1. Task: make the existing Agent Ops workflow reusable across industries and register the self-media workflow as its first business Pack.
+2. Closest solutions and gap: repository inspection showed media and engineering catalogs and keyword rules embedded in `registry.py` and `router.py`. Ecosystem scan above found manifest- and plugin-based agent collections, but they do not provide this repository's WorkItem / deliverable-first route contract. No new plugin framework is needed.
+3. Step 0: **Improve**. Keep the frozen WorkItem, Planner, and State Engine; move industry roles, skills, and route predicates into separately registerable code Packs and let the generic Router evaluate registered rules. Keep cross-industry coordination as a workflow rule set.
+4. Measurable difference: a new industry can be added by registering its Pack without editing Router or the existing media and engineering Packs. Existing Sprint 01 routes preserve their outputs; registered roles remain idle and skills remain unloaded.
+5. Success evidence: all existing routing/state evals pass; a synthetic independent Pack registers in an empty Registry and routes its deliverable; evals also verify duplicate-pack and invalid role/skill rejection plus fail-closed equal-priority ambiguity.
+6. Minimum Core: WorkItem and contract models, generic Registry validation, deterministic Router, Minimum Planner, and State Engine. No AI-based classifier or execution runtime.
+7. Pack boundary: a Pack declares one industry, its roles, skills, and route rules. Cross-industry decomposition uses separately registered workflow rules. External directory discovery, third-party pack installation, and version negotiation are out of scope.
+8. Local-first boundary: registration and routing happen in-process; the desktop data tree and SQLite health checks remain local. No network service or telemetry is added.
+9. Data classification: Pack definitions, generic tests, and docs are **Public**. Local user tasks, outputs, evidence, logs, settings, and credentials are not part of Pack source and remain local.
+10. Public release: continue the existing source-only draft PR. Do not publish installer binaries; Windows signing and both macOS native builds remain separate release requirements.
+11. Transfer: only the reviewed source/doc diff and generic test evidence may update the existing public PR. Inspect staged files and secret patterns before push; no local user data or binaries are included.
+12. State/check rule: baseline evals → extract Pack modules → register and validate → run evals → review staged public diff → update the same branch/PR. Any changed route output requires focused routing review.
+13. Epistemic labels: Fact — current Sprint 01 has deterministic media and engineering routing. Fact — new Pack registration is tested with a third industry. Hypothesis — this boundary will make later industry additions cheaper; no third production Pack is included.
+14. Evolution and rollback: additive modules and Registry API; revert the feature commit to restore the previous monolithic registry/router. No stored user-data migration.
+15. WebUI: no change. Existing desktop setup/status UI remains the user interface; pack discovery and editing stay out of this slice.
+16. Simplest implementation: Python dataclasses, explicit imports at application bootstrap, registered predicates with numeric priority, and stdlib tests. No new dependency or runtime plugin loader.
+17. Not built: executor, AI routing, media-platform publishing, content generation, external Pack marketplace/loader, updater, team mode, or new industry pack beyond existing engineering examples.
