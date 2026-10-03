@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f2" />
+    <title>Sayelf Agent Ops</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand"><span class="mark">S</span><div><p class="eyebrow">SAYELF · AGENT OPS</p><h1>最少岗位，专业闭环。</h1></div></header>
+      <section class="card" aria-labelledby="setup-title">
+        <div class="heading"><div><p class="eyebrow">首次设置</p><h2 id="setup-title">准备你的工作空间</h2></div><span id="status-pill" class="pill">检查中</span></div>
+        <p class="intro">选择一个行业包，Sayelf 会在本机准备好工作空间并检查运行状态。</p>
+        <label for="pack">行业包</label>
+        <select id="pack"><option value="media">内容与媒体</option><option value="engineering">工程与项目</option></select>
+        <div class="location"><div><label>数据保存位置</label><p id="data-location">使用本机默认位置</p></div><button id="choose-location" class="secondary">更改位置</button></div>
+        <button id="initialize" class="primary">开始设置</button>
+        <p id="message" class="message" role="status" aria-live="polite">正在检查本机环境…</p>
+      </section>
+      <section class="card health-card" aria-labelledby="health-title">
+        <div class="heading"><div><p class="eyebrow">本机状态</p><h2 id="health-title">环境检查</h2></div><button id="recheck" class="secondary">重新检查</button></div>
+        <ul id="checks" class="checks"><li><span>本地数据库</span><span>—</span></li><li><span>数据目录</span><span>—</span></li><li><span>Agent Ops Core</span><span>—</span></li><li><span>角色与技能注册表</span><span>—</span></li></ul>
+        <p class="note">Sprint 01 当前提供规划与路由基线。任务执行器和团队服务器尚未开放。</p>
+      </section>
+      <footer>你的工作数据保存在这台设备上。应用更新和卸载不会删除工作数据。</footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
