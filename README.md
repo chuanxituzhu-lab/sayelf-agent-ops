@@ -43,7 +43,7 @@ Sayelf Agent Ops 面向一人公司和小团队，目标是让专业工作可以
 
 Sprint 01 已打通最小路由与规划路径：请求 → WorkItem → 路由 → 计划 → READY。媒体路由示例可将请求分配到 `media.content-planner`，并选择 `media.title-writing` 技能。
 
-桌面工作台现已提供自媒体需求入口：选择小红书、公众号、视频号、抖音或通用媒体内容，输入文字，并可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；每项工作最多添加 5 个附件、单个不超过 15 MiB。系统按平台和交付需求推荐角色。用户在界面中激活该角色后，生成工作方案；方案以 Markdown 和 JSON 留在本机，可编辑、保存到成果目录或另存为 Markdown 文件。
+桌面工作台现已提供自媒体需求入口：选择小红书、公众号、视频号、抖音或通用媒体内容，输入文字，并可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；图片只做文字识别，不分析画面场景或物体，请把希望处理的画面内容写进需求。每项工作最多添加 5 个附件、单个不超过 15 MiB。系统按平台和交付需求推荐角色。用户在界面中激活该角色后，生成工作方案；方案以 Markdown 和 JSON 留在本机，可编辑、保存到成果目录或另存为 Markdown 文件。
 
 工作方案是可审核、可交接的规划成果，不是已完成的文章、脚本或图片。这仍是 Agent Ops 的可验证底座，不代表完整的自媒体公司自动运营系统。内容执行器、AI 创作、外部平台连接、自动发布、Review、Risk 和 Human Gate 尚未实现；已激活的角色目前只参与路由与方案编制。
 
@@ -123,7 +123,7 @@ Business request
 
 Sprint 01 implements a verifiable routing and planning path: request → WorkItem → route → plan → READY. The media routing example assigns a request to `media.content-planner` with the `media.title-writing` skill.
 
-The desktop workbench now accepts self-media requests for Xiaohongshu, WeChat Official Accounts, Channels, Douyin, or general media content. Users can enter text and attach TXT, Markdown, PDF, or common image files. PDF text extraction and Chinese/English OCR run locally and offline. Each work item accepts up to five attachments, 15 MiB each. The router recommends a role; the user activates it in the workbench before the app creates a plan. The Markdown and JSON plan stay on the selected local data directory and can be edited, saved there, or exported as Markdown.
+The desktop workbench now accepts self-media requests for Xiaohongshu, WeChat Official Accounts, Channels, Douyin, or general media content. Users can enter text and attach TXT, Markdown, PDF, or common image files. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not understand image scenes or objects, so users should describe the visual content they want handled. Each work item accepts up to five attachments, 15 MiB each. The router recommends a role; the user activates it in the workbench before the app creates a plan. The Markdown and JSON plan stay on the selected local data directory and can be edited, saved there, or exported as Markdown.
 
 The plan is a reviewable handoff artifact, not a finished article, script, or image. This is the validated Agent Ops foundation, not a complete autonomous media company. Content execution, AI creation, external platform connectors, automatic publishing, Review, Risk, and Human Gate are not implemented. Activated roles currently participate in routing and plan preparation only.
 

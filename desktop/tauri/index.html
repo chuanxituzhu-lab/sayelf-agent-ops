@@ -33,7 +33,7 @@
 
       <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
         <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
-        <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会识别材料并推荐合适角色。</p>
+        <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>
 
         <div class="role-panel">
           <div class="role-heading"><div><label>角色管理</label><p class="subtle">启用后，角色才能为任务生成工作方案。</p></div></div>
@@ -53,7 +53,7 @@
           <label for="request">你准备做什么？</label>
           <textarea id="request" rows="5" maxlength="20000" required placeholder="例如：根据这些照片和产品资料，写一篇小红书新品体验笔记，包含标题、正文和话题标签。"></textarea>
 
-          <div class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个文件不超过 15 MiB，最多 5 个。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
+          <div class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个不超过 15 MiB，最多 5 个。图片只做文字识别，画面语义需写在需求中。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
           <ul id="attachment-list" class="attachment-list"><li class="subtle empty-attachments">还没有添加材料</li></ul>
 
           <button id="create-workitem" class="primary" type="submit">识别需求并生成工作方案</button>
