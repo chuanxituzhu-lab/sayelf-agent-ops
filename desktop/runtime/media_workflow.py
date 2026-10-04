@@ -10,7 +10,7 @@ import uuid
 import zipfile
 
 from desktop.runtime import bootstrap
-from desktop.runtime.model_provider import is_local_endpoint
+from desktop.runtime.model_provider import ADAPTER_ID, ADAPTER_VERSION, is_local_endpoint
 
 STAGES = ("content-plan", "creative-brief", "platform-package")
 ROLE_IDS = (
@@ -18,6 +18,20 @@ ROLE_IDS = (
     "media.creative-producer",
     "media.growth-operator",
 )
+SAFE_ERROR_CODES = {
+    "MODEL_CALL_FAILED",
+    "MODEL_CONSENT_REQUIRED",
+    "MODEL_INPUT_TOO_LARGE",
+    "MODEL_NOT_CONFIGURED",
+    "MODEL_RATE_LIMITED",
+    "MODEL_REJECTED_REQUEST",
+    "MODEL_RESPONSE_INVALID",
+    "MODEL_RESPONSE_TOO_LARGE",
+    "MODEL_UNAVAILABLE",
+    "OUTPUT_WRITE_FAILED",
+    "WORKFLOW_INVALID",
+    "WORKFLOW_STEP_FAILED",
+}
 
 
 class WorkflowError(RuntimeError):
@@ -32,6 +46,53 @@ def _now():
 
 def _hash(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
+
+
+def _safe_error_code(error, fallback="WORKFLOW_STEP_FAILED"):
+    code = getattr(error, "code", None)
+    if isinstance(code, str) and code in SAFE_ERROR_CODES:
+        return code
+    return fallback
+
+
+def _usage_evidence(provider):
+    usage = getattr(provider, "last_usage", None)
+    if not isinstance(usage, dict) or not usage:
+        return {"status": "not-reported-by-provider"}
+    tokens = {
+        key: value
+        for key, value in usage.items()
+        if key in {"prompt_tokens", "completion_tokens", "total_tokens"}
+        and isinstance(value, int)
+        and not isinstance(value, bool)
+        and 0 <= value <= 1_000_000_000
+    }
+    if not tokens:
+        return {"status": "not-reported-by-provider"}
+    return {"status": "reported", "tokens": tokens}
+
+
+def _write_text_atomically(destination, value):
+    if destination.is_symlink():
+        raise WorkflowError("WORKFLOW_INVALID")
+    temporary = destination.with_name(f".{destination.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with temporary.open("x", encoding="utf-8") as stream:
+            stream.write(value)
+        if destination.is_symlink():
+            raise WorkflowError("WORKFLOW_INVALID")
+        temporary.replace(destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _file_matches(destination, expected_hash):
+    if destination.is_symlink() or not destination.is_file():
+        return False
+    try:
+        return _hash(destination.read_bytes()) == expected_hash
+    except OSError:
+        return False
 
 
 def _json_bytes(value) -> bytes:
@@ -325,7 +386,60 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
                 payload.update({"content_plan": outputs["content-plan"],
                                 "creative_brief": outputs["creative-brief"]})
             _record_run(root, run_id, workitem_id, "RUNNING", stage, endpoint, model, input_hash)
-            result = _validate_stage(stage, provider.complete_json(prompt["system"], payload))
+            call_id = f"CALL-{uuid.uuid4().hex}"
+            request_hash = _hash(_json_bytes({"system": prompt["system"], "payload": payload}))
+            endpoint_hash = _hash(endpoint.encode("utf-8"))
+            call_evidence = {
+                "tool": "ModelProvider.complete_json",
+                "call_id": call_id,
+                "adapter_id": getattr(provider, "adapter_id", ADAPTER_ID),
+                "adapter_version": getattr(provider, "adapter_version", ADAPTER_VERSION),
+                "model": model,
+                "permission": "per-run-user-confirmed" if not local_endpoint else "configured-local-endpoint",
+                "scope": {
+                    "provider_endpoint_sha256": endpoint_hash,
+                    "workflow_run_id": run_id,
+                    "stage": stage,
+                    "payload_fields": sorted(payload),
+                    "tools": [],
+                },
+                "approval": {
+                    "required": not local_endpoint,
+                    "status": "granted" if not local_endpoint and allow_external else "not-required",
+                    "approval_id": f"APR-{call_id}" if not local_endpoint and allow_external else None,
+                    "actor": "local-user-confirmed" if not local_endpoint and allow_external else None,
+                    "call_id": call_id,
+                    "request_sha256": request_hash,
+                    "scope": "this media workflow run and its three declared generation stages",
+                },
+                "evidence": {
+                    "request_sha256": request_hash,
+                    "source_sha256": input_hash,
+                    "provider_endpoint_sha256": endpoint_hash,
+                },
+                "data_classification": "Sensitive",
+                "retry_policy": "manual-confirmation-required; provider outcome may be ambiguous",
+                "usage": {"status": "pending"},
+                "state_change": {"call": "NOT_STARTED->RUNNING", "workflow": "RUNNING->RUNNING"},
+                "next_check": "wait-for-provider-response",
+            }
+            with bootstrap._opened(root) as connection:
+                _event(connection, run_id, "provider-call-started", stage, "RUNNING", call_evidence)
+            try:
+                result = _validate_stage(stage, provider.complete_json(prompt["system"], payload))
+            except Exception as error:
+                failure_code = _safe_error_code(error, "MODEL_CALL_FAILED")
+                failed_evidence = {
+                    **call_evidence,
+                    "error_code": failure_code,
+                    "evidence": {**call_evidence["evidence"], "error_code": failure_code},
+                    "usage": _usage_evidence(provider),
+                    "state_change": {"call": "RUNNING->FAILED", "workflow": "RUNNING->FAILED"},
+                    "next_check": "review-the-error; require-user-confirmed-resume-before-retrying",
+                }
+                with bootstrap._opened(root) as connection:
+                    _event(connection, run_id, "provider-call-failed", stage, "RUNNING", failed_evidence)
+                raise WorkflowError(failure_code) from None
             result_blob = _json_bytes(result)
             result_hash = _hash(result_blob)
             with bootstrap._opened(root) as connection:
@@ -334,7 +448,18 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
                     "VALUES (?, ?, ?, ?, ?)",
                     (run_id, stage, result_blob.decode("utf-8"), result_hash, _now()),
                 )
+                _event(connection, run_id, "provider-call-succeeded", stage, "RUNNING", {
+                    **call_evidence,
+                    "evidence": {
+                        **call_evidence["evidence"],
+                        "validated_output_sha256": result_hash,
+                    },
+                    "usage": _usage_evidence(provider),
+                    "state_change": {"call": "RUNNING->SUCCEEDED", "workflow": "RUNNING->RUNNING"},
+                    "next_check": "advance-to-next-stage-or-create-review-result",
+                })
                 _event(connection, run_id, "stage-accepted", stage, "RUNNING", {
+                    "call_id": call_id,
                     "output_sha256": result_hash,
                     "source_sha256": input_hash,
                 })
@@ -378,20 +503,54 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
                 "version": version, "content_sha256": digest,
             })
         output_dir = root / "outputs" / workitem_id
-        output_dir.mkdir(parents=True, exist_ok=True)
-        if output_dir.is_symlink():
-            raise WorkflowError("WORKFLOW_INVALID")
         draft_path = output_dir / f"draft-v{version}.md"
-        if draft_path.is_symlink():
-            raise WorkflowError("WORKFLOW_INVALID")
-        draft_path.write_text(markdown, encoding="utf-8")
+        output_saved = True
+        output_error_code = None
+        output_evidence_recorded = True
+        try:
+            if output_dir.is_symlink():
+                raise WorkflowError("WORKFLOW_INVALID")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            _write_text_atomically(draft_path, markdown)
+            with bootstrap._opened(root) as connection:
+                _event(connection, run_id, "draft-mirror-saved", "draft-export", "NEEDS_REVIEW", {
+                    "version": version,
+                    "output_name": draft_path.name,
+                    "content_sha256": digest,
+                    "state_change": "NEEDS_REVIEW->NEEDS_REVIEW",
+                    "next_check": "human-review",
+                })
+        except Exception as error:
+            output_saved = _file_matches(draft_path, digest)
+            if not output_saved:
+                output_error_code = _safe_error_code(error, "OUTPUT_WRITE_FAILED")
+                try:
+                    with bootstrap._opened(root) as connection:
+                        _event(connection, run_id, "draft-mirror-failed", "draft-export", "NEEDS_REVIEW", {
+                            "version": version,
+                            "content_sha256": digest,
+                            "error_code": output_error_code,
+                            "state_change": "NEEDS_REVIEW->NEEDS_REVIEW",
+                            "next_check": "review-in-app; retry-local-save-or-approve-and-export",
+                        })
+                except sqlite3.Error:
+                    output_evidence_recorded = False
+            else:
+                output_evidence_recorded = False
         return {
             "code": 0,
             "msg": "内容草稿与平台发布包已生成，等待人工审核。",
-            "data": {**result, "result_content": markdown, "output_name": f"draft-v{version}.md"},
+            "data": {
+                **result,
+                "result_content": markdown,
+                "output_name": f"draft-v{version}.md",
+                "output_saved": output_saved,
+                "output_error_code": output_error_code,
+                "output_evidence_recorded": output_evidence_recorded,
+            },
         }
     except Exception as error:
-        code = error.code if isinstance(error, WorkflowError) else getattr(error, "code", "WORKFLOW_STEP_FAILED")
+        code = _safe_error_code(error)
         current = next((stage for stage in STAGES if stage not in outputs), "unknown")
         _record_run(root, run_id, workitem_id, "FAILED", current, endpoint, model, input_hash, code)
         return {
@@ -442,9 +601,8 @@ def approve_and_export(path, workitem_id, content):
     if output_dir.is_symlink():
         raise WorkflowError("WORKFLOW_INVALID")
     package_path = output_dir / f"publish-package-v{version}.zip"
-    manifest_path = output_dir / "manifest.json"
     temporary = package_path.with_suffix(".zip.tmp")
-    if package_path.is_symlink() or temporary.is_symlink() or manifest_path.is_symlink():
+    if package_path.is_symlink() or temporary.is_symlink():
         raise WorkflowError("WORKFLOW_INVALID")
     manifest = {
         "workitem_id": workitem_id,
@@ -506,7 +664,6 @@ def approve_and_export(path, workitem_id, content):
             "content_sha256": digest,
             "package": f"outputs/{workitem_id}/{package_path.name}",
         })
-    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
         "code": 0,
         "msg": "已确认并生成本机发布包；应用没有连接或发布到平台账号。",

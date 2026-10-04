@@ -5,6 +5,9 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
+ADAPTER_ID = "openai-compatible-chat-completions"
+ADAPTER_VERSION = "1"
+
 
 class ProviderError(RuntimeError):
     def __init__(self, code: str):
@@ -22,6 +25,9 @@ def is_local_endpoint(endpoint: str) -> bool:
 class OpenAICompatibleProvider:
     """Minimal, provider-neutral adapter for OpenAI-compatible chat endpoints."""
 
+    adapter_id = ADAPTER_ID
+    adapter_version = ADAPTER_VERSION
+
     def __init__(self, endpoint: str, model: str, api_key: str, timeout: int = 90, opener=None):
         if not endpoint or not model or not api_key:
             raise ProviderError("MODEL_NOT_CONFIGURED")
@@ -30,8 +36,10 @@ class OpenAICompatibleProvider:
         self.api_key = api_key
         self.timeout = min(max(int(timeout), 5), 120)
         self.opener = opener or urlopen
+        self.last_usage = None
 
     def complete_json(self, system_prompt: str, user_payload: dict) -> dict:
+        self.last_usage = None
         body = json.dumps({
             "model": self.model,
             "temperature": 0.4,
@@ -65,6 +73,15 @@ class OpenAICompatibleProvider:
             raise ProviderError("MODEL_RESPONSE_TOO_LARGE")
         try:
             envelope = json.loads(raw.decode("utf-8"))
+            usage = envelope.get("usage") if isinstance(envelope, dict) else None
+            if isinstance(usage, dict):
+                self.last_usage = {
+                    key: usage[key]
+                    for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                    if isinstance(usage.get(key), int)
+                    and not isinstance(usage.get(key), bool)
+                    and 0 <= usage[key] <= 1_000_000_000
+                }
             content = envelope["choices"][0]["message"]["content"]
             result = json.loads(content)
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):

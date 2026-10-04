@@ -272,7 +272,18 @@ function showResult(data) {
   $("approve-publish-package").disabled = false;
   $("performance-panel").hidden = true;
   renderRoles(data.roles || []);
-  setMessage("result-message", `已保存：${data.output_name || `${data.workitem_id}.md`}`, false);
+  if (data.output_saved === false) {
+    const evidenceNote = data.output_evidence_recorded === false ? "本机状态记录也暂时不可用。" : "";
+    setMessage(
+      "result-message",
+      `草稿已生成并可在此审核，但未能保存本机草稿文件。${evidenceNote}确认后仍可尝试生成发布包。`,
+      true,
+    );
+  } else if (data.output_evidence_recorded === false) {
+    setMessage("result-message", `草稿已保存：${data.output_name || `${data.workitem_id}.md`}，但本机状态记录暂时不可用。`, true);
+  } else {
+    setMessage("result-message", `已保存：${data.output_name || `${data.workitem_id}.md`}`, false);
+  }
   $("execution-message").textContent = "";
   $("provider-consent").checked = false;
   void refreshProviderStatus();
@@ -298,6 +309,7 @@ async function runMediaWorkflow() {
       setMessage("execution-message", `请先点击“启用完整内容流程”，启用缺少的角色：${names}。`, true);
     } else if (result.data?.run_id) {
       currentRunId = result.data.run_id;
+      $("provider-consent").checked = false;
       setMessage("execution-message", `${result.msg} 可确认后继续。${result.data.current_step || ""}`, true);
       updateExecutionPanel();
     } else {
