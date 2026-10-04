@@ -45,6 +45,8 @@ Sprint 01 已打通最小路由与规划路径：请求 → WorkItem → 路由 
 
 桌面工作台提供自媒体需求入口：选择小红书、公众号、视频号、抖音或通用媒体内容，输入文字，并可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；图片只识别文字，不分析画面场景或物体。每项工作最多添加 5 个附件、单个不超过 15 MiB。提交后先生成工作单和方案；首次使用可一键激活内容策划、内容制作、运营增长三个媒体角色。
 
+工作台还可输入“自媒体公司”“MCN”“公众号运营”等行业词，从本机已注册的行业包推荐岗位。推荐只读取现有角色，不会自动激活或新建岗位；暂不支持的行业或含义不明确的输入会提示用户补充，不调用模型。
+
 配置兼容的 AI 服务地址、模型和密钥后，工作单可按三个岗位阶段生成内容方案、视觉创意简报和平台发布稿。密钥保存在系统凭据库。使用远程模型时，每次运行前都会显示目标地址与将发送的需求文字、附件识别文字，并要求单次确认；原始文件不会上传。工作流按阶段保存状态和版本，失败后可以从已完成阶段继续。生成稿可编辑；点击确认后，系统在本机生成含 Markdown、清单和来源索引的 ZIP 发布包。应用不登录平台、不自动发布。发布后可手工录入浏览、点赞、收藏、评论和分享数量，生成只保存在本机的比例复盘；缺少历史基线时不会替用户判断好坏。
 
 这是可运行的本地创作与人工发布交接闭环，不是无人值守的自媒体公司。当前没有内置模型账号或默认密钥；首次真实连接和内容质量需由使用者配置并验证。平台直发、自动排期、数据接口、视频生成和自动化经营决策尚未实现。
@@ -126,6 +128,8 @@ Business request
 Sprint 01 implements a verifiable routing and planning path: request → WorkItem → route → plan → READY. The media routing example assigns a request to `media.content-planner` with the `media.title-writing` skill.
 
 The desktop workbench accepts self-media requests for Xiaohongshu, WeChat Official Accounts, Channels, Douyin, or general media content. Users can enter text and attach TXT, Markdown, PDF, or common image files. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not interpret image scenes or objects. Each work item accepts up to five attachments, 15 MiB each. The app creates a WorkItem and plan; first-time users can activate the three media roles together.
+
+The workbench also accepts an industry label such as “self-media company,” “MCN,” or “WeChat content operations” and recommends roles from the local registered pack. Recommendations reuse existing roles and do not activate or create them. Unsupported or ambiguous input asks the user to clarify; no model call is made.
 
 After configuring an AI-compatible endpoint, model, and key, the workbench can run three role stages: content plan, creative brief, and channel-ready draft. The key stays in the operating system credential store. Before each remote run, the UI identifies the endpoint and the request/OCR text being sent and asks for one-time consent; original files stay local. Stage state and versions are saved locally, and a failed run can resume from accepted stages. Users can edit the draft, then explicitly approve it to create a local ZIP containing Markdown, a checklist, and a source index. The app does not sign into social platforms or publish for the user. After manual publication, users can enter views, likes, saves, comments, and shares to create a local metrics review; without a history baseline, the app reports ratios but makes no performance judgment.
 

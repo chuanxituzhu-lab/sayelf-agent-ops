@@ -7,7 +7,8 @@
     "tauri": "tauri",
     "dev": "vite --host 127.0.0.1",
     "build": "node scripts/prepare-ocr-assets.mjs && vite build",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "test:roles": "node --test src/industry_recommendation.test.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.11.0",

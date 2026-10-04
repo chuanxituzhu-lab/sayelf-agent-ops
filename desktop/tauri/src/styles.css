@@ -22,8 +22,15 @@ button:hover { opacity: .88; } button:active { transform: translateY(1px); } but
 .health-card { padding-top: 24px; padding-bottom: 21px; }.checks { margin: 20px 0 17px; padding: 0; list-style: none; }.checks li { padding: 11px 2px; border-bottom: 1px solid #edf0ec; color: #536359; font-size: 13px; }.checks li:last-child { border: 0; }
 .check-ok { color: #34784d; font-weight: 600; }.check-wait { color: #89958d; }
 .note, footer { color: #78857c; font-size: 12px; line-height: 1.6; }.note { margin: 13px 0 0; padding: 12px 13px; border-radius: 9px; background: #f5f7f4; } footer { padding: 2px 5px; text-align: center; }
-.role-panel { margin: 0 0 23px; padding: 17px; border: 1px solid #e8ede8; border-radius: 12px; background: #f9fbf9; }
 .role-heading, .attachment-heading, .result-actions { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.industry-recommender { margin-top: 15px; padding: 13px; border: 1px solid #e8ede8; border-radius: 10px; background: #fff; }
+.industry-input-row { display: flex; align-items: center; gap: 9px; }
+.industry-input-row input { flex: 1; min-width: 0; margin: 0 !important; }
+.industry-input-row input:focus { outline: 2px solid #a9c5b1; outline-offset: 1px; }
+.role-management-heading { margin-top: 17px; }
+.role-management-heading label { margin-bottom: 0; }
+.role-recommendation-badge { display: inline-flex; margin-left: 8px; padding: 3px 7px; border-radius: 999px; background: #edf3ee; color: #41604e; font-size: 10px; font-weight: 700; vertical-align: middle; }
+.role-recommendation-badge + .subtle { margin-top: 5px; }
 .subtle { margin: 5px 0 0; color: #78857c; font-size: 12px; line-height: 1.55; }
 .role-list { display: grid; gap: 9px; margin-top: 14px; }
 .role-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid #e8ede8; border-radius: 10px; background: white; }

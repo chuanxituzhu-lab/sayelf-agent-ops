@@ -31,14 +31,22 @@
         <p class="note">需求识别与本地工作方案无需联网。配置 AI 服务后可生成内容；平台发布仍由你手动完成。</p>
       </section>
 
+      <section id="role-management-card" class="card" aria-labelledby="role-management-title" hidden>
+        <div class="heading"><div><p class="eyebrow">岗位注册表</p><h2 id="role-management-title">行业岗位推荐与激活</h2></div></div>
+        <p id="role-recommendation-note" class="intro">输入行业，查看当前行业包中已注册的 Agent 岗位。</p>
+        <form id="industry-recommendation-form" class="industry-recommender">
+          <label for="industry-input">你的行业</label>
+          <div class="industry-input-row"><input id="industry-input" maxlength="120" placeholder="例如：自媒体公司、MCN、工程项目" required /><button id="recommend-industry" class="secondary" type="submit">推荐岗位</button></div>
+          <p class="subtle">只从本机已注册岗位中推荐；不会自动激活或新建角色，行业名称只在本机匹配。</p>
+          <p id="industry-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+        <div class="role-heading role-management-heading"><label>当前行业包岗位</label><button id="activate-media-team" class="secondary" type="button">启用完整内容流程</button></div>
+        <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
+      </section>
+
       <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
         <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
         <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>
-
-        <div class="role-panel">
-          <div class="role-heading"><div><label>角色管理</label><p class="subtle">完整内容流程会依次使用内容策划、内容制作和运营增长。</p></div><button id="activate-media-team" class="secondary" type="button">启用完整内容流程</button></div>
-          <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
-        </div>
 
         <details class="provider-settings">
           <summary>AI 服务设置 <span id="provider-status" class="subtle">尚未配置</span></summary>

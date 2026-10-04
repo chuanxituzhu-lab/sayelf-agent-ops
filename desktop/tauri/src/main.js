@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { extractEvidence } from "./intake.js";
+import { recommendIndustryRoles } from "./industry_recommendation.js";
 
 const $ = (id) => document.getElementById(id);
 let selectedPath = null;
@@ -12,6 +13,9 @@ let currentResultVersion = null;
 let currentIsGeneratedDraft = false;
 let approvedPackage = false;
 let providerConfig = { configured: false, endpoint: "", model: "" };
+let currentPack = null;
+let currentRoles = [];
+let recommendedRoleIds = new Set();
 
 const labels = {
   database: "本地数据库",
@@ -19,6 +23,7 @@ const labels = {
   core: "Agent Ops Core",
   registry: "角色与技能注册表",
 };
+const packLabels = { media: "内容与媒体", engineering: "工程与项目" };
 
 function setMessage(id, message, error = false) {
   const element = $(id);
@@ -56,10 +61,18 @@ function renderRoles(roles = []) {
     const responsibility = document.createElement("p");
     responsibility.className = "subtle";
     responsibility.textContent = role.responsibility;
+    if (recommendedRoleIds.has(role.id)) {
+      const badge = document.createElement("span");
+      badge.className = "role-recommendation-badge";
+      badge.textContent = "行业建议";
+      detail.append(name, badge, responsibility);
+    } else {
+      detail.append(name, responsibility);
+    }
     const state = document.createElement("span");
     state.className = `role-state ${role.active ? "active" : "inactive"}`;
     state.textContent = role.active ? "已激活" : "未激活";
-    detail.append(name, responsibility, state);
+    detail.append(state);
     const action = document.createElement("button");
     action.type = "button";
     action.className = role.active ? "secondary role-toggle" : "secondary role-toggle activate";
@@ -72,6 +85,8 @@ function renderRoles(roles = []) {
 
 function render(data) {
   ready = true;
+  currentPack = data.pack;
+  currentRoles = data.roles || [];
   $("status-pill").textContent = "本机已就绪";
   $("status-pill").className = "pill check-ok";
   $("initialize").textContent = "重新检查环境";
@@ -80,7 +95,10 @@ function render(data) {
   $("pack").disabled = true;
   $("choose-location").disabled = true;
   renderChecks();
-  renderRoles(data.roles);
+  renderRoles(currentRoles);
+  $("role-management-card").hidden = false;
+  $("role-recommendation-note").textContent = `当前工作空间使用“${packLabels[data.pack] || data.pack}”行业包；只推荐该行业包中已注册的岗位。`;
+  $("activate-media-team").hidden = data.pack !== "media";
   $("workbench").hidden = data.pack !== "media";
   if (data.pack === "media") {
     setMessage("message", `本地环境已就绪。${data.roles.length} 个媒体角色已注册；角色需要激活后才会接收工作。`);
@@ -142,6 +160,8 @@ function updateExecutionPanel() {
 
 function needsSetup(result) {
   ready = false;
+  $("role-management-card").hidden = true;
+  $("workbench").hidden = true;
   $("status-pill").textContent = "等待设置";
   $("status-pill").className = "pill";
   setMessage("message", result.msg || "请选择行业包并开始设置。", result.data?.reason !== "SETUP_REQUIRED");
@@ -343,7 +363,8 @@ async function setRoleActive(roleId, active) {
   try {
     const result = await invoke("set_role_active", { roleId, active });
     if (result.code !== 0) throw new Error(result.msg || "角色状态没有更新。");
-    renderRoles(result.data.roles || []);
+    currentRoles = result.data.roles || [];
+    renderRoles(currentRoles);
     if (pendingRoleId === roleId && active) await buildPlan();
     else setMessage("work-message", active ? "角色已激活，可处理匹配的工作。" : "角色已停用，不会接收新工作。", false);
     return true;
@@ -352,6 +373,28 @@ async function setRoleActive(roleId, active) {
     return false;
   }
 }
+
+$("industry-recommendation-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const industry = $("industry-input").value;
+  const result = recommendIndustryRoles(industry, currentPack, currentRoles);
+  recommendedRoleIds = new Set(result.roles.map((role) => role.id));
+  renderRoles(currentRoles);
+
+  if (result.status === "recommended") {
+    setMessage("industry-message", `“${industry.trim()}”匹配到${result.pack.name}，本机已有 ${result.roles.length} 个岗位建议。按需激活后才会接收工作。`);
+  } else if (result.status === "pack-mismatch") {
+    setMessage("industry-message", `“${industry.trim()}”匹配到${result.pack.name}，但当前工作空间使用“${packLabels[currentPack] || currentPack}”行业包。请在首次设置时选择对应行业包；不会跨包借用角色。`, true);
+  } else if (result.status === "ambiguous") {
+    setMessage("industry-message", `描述同时匹配到${result.packs.map((pack) => pack.name).join("、")}，请补充更具体的行业名称。`, true);
+  } else if (result.status === "unknown") {
+    setMessage("industry-message", "暂未匹配到已注册的行业岗位。可试试“自媒体公司”“MCN”或“工程项目”。", true);
+  } else if (result.status === "empty") {
+    setMessage("industry-message", "该行业包当前没有可推荐的已注册岗位，请重新检查本机环境。", true);
+  } else {
+    setMessage("industry-message", "请输入不超过 120 个字符的行业名称。", true);
+  }
+});
 
 $("choose-location").addEventListener("click", async () => {
   try {

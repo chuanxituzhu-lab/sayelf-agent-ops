@@ -139,3 +139,24 @@ Research references: [LangGraph durable execution and human input](https://docs.
 15. WebUI: existing desktop UI remains required; reuse current review/error surfaces and show a concise draft-save warning. No new workflow or settings screen.
 16. Simplest implementation: add compact evidence events around each existing provider call, isolate atomic Markdown mirror writing from the already-committed review result, and remove the unused duplicate manifest sidecar; standard library only.
 17. Explicitly not building: a new harness, model tool execution, provider capability marketplace, hosted telemetry, automatic retries, cancellation protocol, new states beyond the existing run/result states, database schema migration, or content-quality claims.
+
+## Industry-to-role recommendation — 2026-10-04
+
+1. Real task: let a nontechnical user type their industry in the existing desktop WebUI and see relevant Agent roles already registered in the selected local industry pack.
+2. Closest existing capabilities: the desktop role manager already lists and activates registered roles; `build_default_registry()` registers media and engineering packs; the Router maps work deliverables to roles. CrewAI documents role-based agent teams ([official guide](https://docs.crewai.com/core-concepts/Agents)); Agenta and open-source team builders offer broader agent authoring, but the task here is a local recommendation over this app's existing registry, not an agent builder ([Agenta](https://github.com/agenta-ai/agenta), [BMAD TeamBuilder](https://github.com/dexusno/teambuilder)).
+3. Step 0: **Integrate** — connect a free-text industry label to existing pack/role metadata; do not create another role catalog or recommender service.
+3a. Execution Verdict: **GO** for an offline, deterministic UI slice.
+4. Measurable difference: one industry input returns the matching registered role cards without network/model use; ambiguous and unsupported inputs return an explicit no-guess response; recommendation never changes role activation.
+5. Success evidence: focused unit cases cover media and engineering aliases, selected-pack isolation, ambiguous/unknown input, and role list filtering; front-end production build succeeds.
+6. Minimum Core: existing Registry, RoleContracts and role activation state remain unchanged.
+7. Plugin boundary: match only the existing `media` and `engineering` packs; role names/responsibilities come from the runtime registry response, not duplicated in UI metadata.
+8. Local-first: industry text is processed in the desktop UI only; no database persistence, model call, telemetry, or network request.
+9. Data classification: the typed industry label is **Unknown** until assessed and stays local; source/docs and synthetic tests are **Public** after staged review; no credentials or user work materials are involved.
+10. Public release: eligible for the existing draft PR only after staged-diff and artifact leak review; no release artifact.
+11. Transfer: none during feature execution or verification; later source publication is limited to reviewed generic code/docs/tests.
+12. State/check rule: recommendations are view-only; explicit existing activation controls continue to own role state; workspace pack and user data do not change.
+13. Epistemic boundary: a recognized alias is a deterministic match to a registered pack, not an AI inference about the company's actual org chart. Unknown/ambiguous terms are not promoted to role facts.
+14. Evolution/rollback: no schema or user-data changes; revert the UI/matcher commit to roll back.
+15. WebUI: **Required**, integrated into the existing role manager so the ordinary path is input → recommendations → explicit activation.
+16. Simplest implementation: a small local matcher module plus the current runtime role list; Node's built-in test runner, no new dependency.
+17. Explicitly not building: arbitrary AI-generated roles, automatic role activation, custom role persistence, a new pack loader, model/API use, or organization-chart generation.
