@@ -33,6 +33,13 @@ button:hover { opacity: .88; } button:active { transform: translateY(1px); } but
 .role-recommendation-badge + .subtle { margin-top: 5px; }
 .subtle { margin: 5px 0 0; color: #78857c; font-size: 12px; line-height: 1.55; }
 .role-list { display: grid; gap: 9px; margin-top: 14px; }
+.recent-workflow-list { display: grid; gap: 9px; margin-top: 14px; }
+.recent-workflow-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid #e8ede8; border-radius: 10px; background: white; }
+.recent-workflow-detail { min-width: 0; }
+.recent-workflow-detail strong { color: #34463a; font-size: 13px; }
+.recent-workflow-meta { margin: 5px 0 0; color: #78857c; font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.recent-workflow-actions { display: flex; flex: none; gap: 7px; }
+.recent-workflow-actions .secondary { padding-inline: 11px; }
 .role-item { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px; border: 1px solid #e8ede8; border-radius: 10px; background: white; }
 .role-item strong, .attachment-list strong { color: #34463a; font-size: 13px; }
 .role-item .subtle { max-width: 440px; }
@@ -71,4 +78,5 @@ textarea:focus, select:focus { outline: 2px solid #a9c5b1; outline-offset: 1px; 
 .performance-form button { grid-column: 1 / -1; justify-self: start; margin-top: 9px; }
 .performance-output { min-height: 200px; background: #fff; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 12px; }
 @media (max-width: 540px) { .shell { margin-top: 30px; } .card { padding: 22px 20px; }.heading { align-items: flex-start; gap: 12px; } }
+@media (max-width: 540px) { .recent-workflow-item { align-items: flex-start; flex-direction: column; }.recent-workflow-actions { width: 100%; }.recent-workflow-actions button { flex: 1; } }
 @media (max-width: 460px) { .role-item, .attachment-heading { align-items: flex-start; }.result-actions { align-items: stretch; flex-direction: column; }.result-actions .secondary { min-height: 42px; }.role-item { padding: 10px; } }

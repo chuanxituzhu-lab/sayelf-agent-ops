@@ -44,6 +44,13 @@
         <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
       </section>
 
+      <section id="recent-workflows-card" class="card" aria-labelledby="recent-workflows-title" hidden>
+        <div class="heading"><div><p class="eyebrow">本机记录</p><h2 id="recent-workflows-title">最近内容任务</h2></div><button id="refresh-recent-workflows" class="secondary" type="button">刷新</button></div>
+        <p class="subtle">任务记录和成果只保存在本机。中断的任务可以从已完成步骤继续；继续使用云端模型时需要重新确认。</p>
+        <div id="recent-workflows-list" class="recent-workflow-list" role="list"><p class="subtle">正在读取本机记录…</p></div>
+        <p id="recent-workflows-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
       <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
         <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
         <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>

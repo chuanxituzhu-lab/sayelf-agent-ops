@@ -1,6 +1,7 @@
 import hashlib
 import json
 from contextlib import closing
+import multiprocessing
 from pathlib import Path
 import sqlite3
 import tempfile
@@ -13,7 +14,10 @@ from desktop.runtime.media_workflow import (
     ROLE_IDS,
     approve_and_export,
     execute_media_workflow,
+    load_saved_media_result,
+    recent_media_workflows,
     record_performance_review,
+    _workitem_run_lock,
 )
 from desktop.runtime.model_provider import OpenAICompatibleProvider, ProviderError
 
@@ -62,6 +66,14 @@ class FakeProvider:
                 ],
             }
         raise AssertionError("unknown stage")
+
+
+def _hold_workitem_lock(root, workitem_id, started, release, acquired):
+    with _workitem_run_lock(Path(root), workitem_id) as locked:
+        acquired.put(locked)
+        started.set()
+        if locked:
+            release.wait(10)
 
 
 class MediaWorkflowTests(unittest.TestCase):
@@ -215,6 +227,29 @@ class MediaWorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "WORKFLOW_INVALID"):
             record_performance_review(self.root, "WI-MEDIA-1", {"views": 50})
 
+    def test_approval_from_history_is_bound_to_selected_version(self):
+        first = execute_media_workflow(self.root, "WI-MEDIA-1", FakeProvider())["data"]
+        second = execute_media_workflow(self.root, "WI-MEDIA-1", FakeProvider())["data"]
+        self.assertEqual(1, first["version"])
+        self.assertEqual(2, second["version"])
+
+        approved = approve_and_export(
+            self.root, "WI-MEDIA-1", first["markdown"], version=first["version"]
+        )
+        self.assertEqual(1, approved["data"]["version"])
+        with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as connection:
+            states = connection.execute(
+                "SELECT version, review_state FROM workflow_results "
+                "WHERE workitem_id='WI-MEDIA-1' ORDER BY version"
+            ).fetchall()
+        self.assertEqual([(1, "APPROVED"), (2, "NEEDS_REVIEW")], states)
+
+        edited = first["markdown"] + "\n歷史版本人工修訂。\n"
+        revised = approve_and_export(
+            self.root, "WI-MEDIA-1", edited, version=first["version"]
+        )
+        self.assertEqual(3, revised["data"]["version"])
+
     def test_remote_provider_requires_per_run_consent_before_any_call(self):
         bootstrap.configure_provider(self.root, "https://example.invalid/v1", "remote-test")
         provider = FakeProvider()
@@ -294,6 +329,77 @@ class MediaWorkflowTests(unittest.TestCase):
                 (failed["data"]["run_id"],),
             ).fetchall()
         self.assertEqual(3, len(stages))
+
+    def test_recent_history_recovers_abandoned_run_and_reopens_exact_result(self):
+        generated = execute_media_workflow(self.root, "WI-MEDIA-1", FakeProvider())
+        self.assertEqual(0, generated["code"])
+        run_id = generated["data"]["run_id"]
+        with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as connection, connection:
+            connection.execute(
+                "UPDATE workflow_runs SET state='RUNNING', current_step='platform-package', error_code=NULL "
+                "WHERE run_id=?",
+                (run_id,),
+            )
+
+        items = recent_media_workflows(self.root)
+        item = next(entry for entry in items if entry["run_id"] == run_id)
+        self.assertEqual("FAILED", item["state"])
+        self.assertEqual("WORKFLOW_INTERRUPTED", item["error_code"])
+        self.assertTrue(item["resumable"])
+        self.assertTrue(item["has_result"])
+        serialized_history = json.dumps(items, ensure_ascii=False)
+        self.assertNotIn("根据资料写一篇", serialized_history)
+        self.assertNotIn("offline-test-model", serialized_history)
+
+        restored = load_saved_media_result(self.root, "WI-MEDIA-1", run_id)
+        self.assertEqual(generated["data"]["markdown"], restored["result_content"])
+        self.assertEqual("NEEDS_REVIEW", restored["review_state"])
+        self.assertTrue(restored["saved_record"])
+
+    def test_live_workitem_lock_prevents_recovery_and_duplicate_execution(self):
+        generated = execute_media_workflow(self.root, "WI-MEDIA-1", FakeProvider())
+        run_id = generated["data"]["run_id"]
+        with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as connection, connection:
+            connection.execute(
+                "UPDATE workflow_runs SET state='RUNNING', current_step='platform-package', error_code=NULL "
+                "WHERE run_id=?",
+                (run_id,),
+            )
+
+        context = multiprocessing.get_context("spawn")
+        started = context.Event()
+        release = context.Event()
+        acquired = context.Queue()
+        process = context.Process(
+            target=_hold_workitem_lock,
+            args=(str(self.root), "WI-MEDIA-1", started, release, acquired),
+        )
+        process.start()
+        try:
+            self.assertTrue(started.wait(8), "worker process did not acquire the task lock")
+            self.assertTrue(acquired.get(timeout=3))
+            items = recent_media_workflows(self.root)
+            item = next(entry for entry in items if entry["run_id"] == run_id)
+            self.assertEqual("RUNNING", item["state"])
+            self.assertFalse(item["resumable"])
+
+            duplicate_provider = FakeProvider()
+            duplicate = execute_media_workflow(self.root, "WI-MEDIA-1", duplicate_provider)
+            self.assertEqual("WORKFLOW_ALREADY_RUNNING", duplicate["data"]["reason"])
+            self.assertEqual([], duplicate_provider.calls)
+        finally:
+            release.set()
+            process.join(8)
+            if process.is_alive():
+                process.terminate()
+                process.join(3)
+        self.assertEqual(0, process.exitcode)
+
+        recovered = next(
+            entry for entry in recent_media_workflows(self.root) if entry["run_id"] == run_id
+        )
+        self.assertEqual("FAILED", recovered["state"])
+        self.assertEqual("WORKFLOW_INTERRUPTED", recovered["error_code"])
 
     def test_invalid_checkpoint_is_rejected_before_new_provider_calls(self):
         for matching_digest in (False, True):

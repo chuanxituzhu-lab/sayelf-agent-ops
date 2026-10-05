@@ -684,12 +684,48 @@ async fn execute_media_workflow(
 }
 
 #[tauri::command]
+async fn list_recent_media_workflows(app: AppHandle) -> Result<Value, String> {
+    let data_dir = require_workspace(&app)?;
+    invoke_runtime(&app, "recent-workflows", Some(data_dir), None, Vec::new()).await
+}
+
+#[tauri::command]
+async fn load_saved_media_result(
+    app: AppHandle,
+    workitem_id: String,
+    run_id: String,
+) -> Result<Value, String> {
+    if !valid_workitem_id(&workitem_id) || !valid_workflow_id(&run_id) {
+        return Err("本机任务编号无效。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    invoke_runtime(
+        &app,
+        "saved-media-result",
+        Some(data_dir),
+        None,
+        vec![
+            "--workitem-id".into(),
+            workitem_id,
+            "--run-id".into(),
+            run_id,
+        ],
+    )
+    .await
+}
+
+#[tauri::command]
 async fn approve_and_export_media_package(
     app: AppHandle,
     workitem_id: String,
+    version: u64,
     content: String,
 ) -> Result<Value, String> {
-    if !valid_workitem_id(&workitem_id) || content.trim().is_empty() || content.len() > 1_000_000 {
+    if !valid_workitem_id(&workitem_id)
+        || version == 0
+        || content.trim().is_empty()
+        || content.len() > 1_000_000
+    {
         return Err("成果内容为空、过大或工作单编号无效。".into());
     }
     let data_dir = require_workspace(&app)?;
@@ -712,6 +748,8 @@ async fn approve_and_export_media_package(
         vec![
             "--workitem-id".into(),
             workitem_id,
+            "--version".into(),
+            version.to_string(),
             "--content-file".into(),
             content_path.to_string_lossy().into_owned(),
         ],
@@ -765,6 +803,14 @@ fn valid_workitem_id(workitem_id: &str) -> bool {
     workitem_id.starts_with("WI-")
         && workitem_id.len() <= 68
         && workitem_id
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+}
+
+fn valid_workflow_id(run_id: &str) -> bool {
+    run_id.starts_with("RUN-")
+        && (5..=84).contains(&run_id.len())
+        && run_id
             .chars()
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
 }
@@ -844,6 +890,8 @@ fn main() {
             clear_ai_provider,
             test_ai_provider,
             execute_media_workflow,
+            list_recent_media_workflows,
+            load_saved_media_result,
             approve_and_export_media_package,
             record_media_performance,
             save_workitem_result,
@@ -899,6 +947,14 @@ mod tests {
             validate_workitem_input("需求", &over_file),
             Err("单个附件识别文字超过 30,000 字，请减少或拆分材料。".into())
         );
+    }
+
+    #[test]
+    fn workflow_ids_are_bounded_and_path_safe() {
+        assert!(valid_workflow_id("RUN-0123456789abcdef"));
+        assert!(!valid_workflow_id("RUN-"));
+        assert!(!valid_workflow_id("RUN-../escape"));
+        assert!(!valid_workflow_id(&format!("RUN-{}", "a".repeat(81))));
     }
 
     #[test]

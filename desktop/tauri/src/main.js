@@ -101,11 +101,131 @@ function render(data) {
   $("activate-media-team").hidden = data.pack !== "media";
   $("workbench").hidden = data.pack !== "media";
   if (data.pack === "media") {
+    $("recent-workflows-card").hidden = false;
     setMessage("message", `本地环境已就绪。${data.roles.length} 个媒体角色已注册；角色需要激活后才会接收工作。`);
     void refreshProviderStatus();
+    void refreshRecentWorkflows();
   } else {
+    $("recent-workflows-card").hidden = true;
     setMessage("message", "本地环境已就绪。当前桌面需求工作流优先支持自媒体公司，请在首次设置时选择“内容与媒体”。");
   }
+}
+
+const workflowStateLabels = {
+  RUNNING: "处理中",
+  FAILED: "已暂停",
+  BLOCKED: "等待处理",
+  NEEDS_REVIEW: "待审核",
+  COMPLETED: "已完成",
+};
+const workflowStepLabels = {
+  "content-plan": "内容策划",
+  "creative-brief": "视觉方案",
+  "platform-package": "平台发布包",
+  "human-review": "人工审核",
+  "package-exported": "发布包已导出",
+};
+
+async function refreshRecentWorkflows() {
+  if (!ready || currentPack !== "media") return;
+  const list = $("recent-workflows-list");
+  try {
+    const result = await invoke("list_recent_media_workflows");
+    if (result.code !== 0) throw new Error(result.msg || "读取失败");
+    const items = result.data?.items || [];
+    if (!items.length) {
+      const empty = document.createElement("p");
+      empty.className = "subtle";
+      empty.textContent = "完成第一项内容任务后，记录和成果会显示在这里。";
+      list.replaceChildren(empty);
+      setMessage("recent-workflows-message", "");
+      return;
+    }
+    list.replaceChildren(...items.map((item) => {
+      const row = document.createElement("article");
+      row.className = "recent-workflow-item";
+      row.setAttribute("role", "listitem");
+      const detail = document.createElement("div");
+      detail.className = "recent-workflow-detail";
+      const title = document.createElement("strong");
+      const interrupted = item.error_code === "WORKFLOW_INTERRUPTED";
+      const stoppedCheckpoint = item.error_code === "WORKFLOW_CHECKPOINT_INVALID";
+      const status = item.state === "RUNNING"
+        ? "处理中（可能在另一窗口运行）"
+        : interrupted ? "上次中断 · 可继续"
+          : stoppedCheckpoint ? "已停止 · 检查点异常"
+            : item.resumable && item.state === "FAILED" ? "已暂停 · 可继续"
+              : workflowStateLabels[item.state] || item.state;
+      title.textContent = `${item.channel || "媒体内容"} · ${status}`;
+      const meta = document.createElement("p");
+      meta.className = "recent-workflow-meta";
+      const step = workflowStepLabels[item.current_step] || item.current_step || "已记录";
+      const timestamp = item.updated_at ? new Date(item.updated_at).toLocaleString() : "时间未知";
+      meta.textContent = `${item.workitem_id} · ${step} · ${timestamp}`;
+      detail.append(title, meta);
+      const actions = document.createElement("div");
+      actions.className = "recent-workflow-actions";
+      if (item.has_result) {
+        const openButton = document.createElement("button");
+        openButton.type = "button";
+        openButton.className = "secondary";
+        openButton.textContent = "打开成果";
+        openButton.addEventListener("click", () => void openSavedMediaResult(item));
+        actions.append(openButton);
+      }
+      if (item.resumable) {
+        const resumeButton = document.createElement("button");
+        resumeButton.type = "button";
+        resumeButton.className = "secondary";
+        resumeButton.textContent = "继续任务";
+        resumeButton.addEventListener("click", () => resumeSavedWorkflow(item));
+        actions.append(resumeButton);
+      }
+      row.append(detail, actions);
+      return row;
+    }));
+    setMessage("recent-workflows-message", `显示最近 ${items.length} 项；运行记录和成果仅保存在本机。`);
+  } catch {
+    list.replaceChildren();
+    setMessage("recent-workflows-message", "无法读取本机任务记录，请稍后刷新。", true);
+  }
+}
+
+async function openSavedMediaResult(item) {
+  try {
+    const result = await invoke("load_saved_media_result", {
+      workitemId: item.workitem_id,
+      runId: item.run_id,
+    });
+    if (result.code !== 0) throw new Error(result.msg || "成果读取失败");
+    showResult(result.data);
+  } catch (error) {
+    setMessage("recent-workflows-message", error instanceof Error ? error.message : "无法打开本机成果。", true);
+  }
+}
+
+function resumeSavedWorkflow(item) {
+  currentWorkItemId = item.workitem_id;
+  currentRunId = item.run_id;
+  currentResultVersion = null;
+  currentIsGeneratedDraft = false;
+  approvedPackage = false;
+  pendingRoleId = null;
+  $("activation-prompt").hidden = true;
+  $("result-card").hidden = false;
+  $("result-title").textContent = "继续内容任务";
+  $("result-state").textContent = item.error_code === "WORKFLOW_INTERRUPTED" ? "上次运行已中断" : "等待继续";
+  $("result-summary").textContent = `工作单 ${item.workitem_id} · ${workflowStepLabels[item.current_step] || item.current_step || "未完成步骤"}。已完成的有效阶段会从本机检查点恢复。`;
+  $("result-content").value = "";
+  $("execution-panel").hidden = false;
+  $("approve-publish-package").hidden = true;
+  $("performance-panel").hidden = true;
+  $("provider-consent").checked = false;
+  setMessage("execution-message", "继续前请检查本次使用的模型。云端模型每次恢复都需要重新确认发送范围。", false);
+  setMessage("result-message", "任务状态已恢复到本机界面；确认后继续。", false);
+  void refreshProviderStatus();
+  updateExecutionPanel();
+  $("result-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function refreshProviderStatus() {
@@ -274,25 +394,31 @@ function showResult(data) {
   currentRunId = data.run_id || null;
   currentResultVersion = data.version || null;
   currentIsGeneratedDraft = Boolean(data.platform_package);
-  approvedPackage = false;
+  approvedPackage = data.review_state === "APPROVED";
   pendingRoleId = null;
   $("activation-prompt").hidden = true;
   $("result-card").hidden = false;
   $("result-title").textContent = data.platform_package
     ? `${data.channel || "媒体"}发布包 · v${data.version}`
     : data.routing?.deliverable_type === "video-script" ? "短视频工作方案" : "工作方案";
-  $("result-state").textContent = data.platform_package ? "待人工审核" : "已规划 · 尚未执行";
+  $("result-state").textContent = data.platform_package
+    ? approvedPackage ? "已确认 · 可手动发布" : "待人工审核"
+    : "已规划 · 尚未执行";
   $("result-summary").textContent = data.platform_package
-    ? `工作单 ${data.workitem_id} · 三个媒体岗位已完成草稿、视觉方案和平台发布检查；发布包尚未确认，也未发布。`
+    ? approvedPackage
+      ? `工作单 ${data.workitem_id} · 版本已确认，可手动发布；Sayelf 未连接平台账号。`
+      : `工作单 ${data.workitem_id} · 三个媒体岗位已完成草稿、视觉方案和平台发布检查；发布包尚未确认，也未发布。`
     : `工作单 ${data.workitem_id} · 建议角色：${data.routing?.role_name || "未指定"}。方案已保存到本机成果目录，可继续生成内容并导出。`;
   $("result-content").value = data.result_content || "";
   $("execution-panel").hidden = currentIsGeneratedDraft;
   $("approve-publish-package").hidden = !currentIsGeneratedDraft;
-  $("approve-publish-package").textContent = "确认成果并生成发布包";
-  $("approve-publish-package").disabled = false;
-  $("performance-panel").hidden = true;
+  $("approve-publish-package").textContent = approvedPackage ? "已确认，发布包已生成" : "确认成果并生成发布包";
+  $("approve-publish-package").disabled = approvedPackage;
+  $("performance-panel").hidden = !approvedPackage;
   renderRoles(data.roles || []);
-  if (data.output_saved === false) {
+  if (data.saved_record) {
+    setMessage("result-message", `已从本机任务记录恢复成果：${data.output_name || `版本 ${data.version}`}。`, false);
+  } else if (data.output_saved === false) {
     const evidenceNote = data.output_evidence_recorded === false ? "本机状态记录也暂时不可用。" : "";
     setMessage(
       "result-message",
@@ -307,6 +433,7 @@ function showResult(data) {
   $("execution-message").textContent = "";
   $("provider-consent").checked = false;
   void refreshProviderStatus();
+  void refreshRecentWorkflows();
   $("result-card").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -341,6 +468,7 @@ async function runMediaWorkflow() {
     setMessage("execution-message", "内容工作流没有启动，请检查模型配置和本机工作空间。", true);
   } finally {
     updateExecutionPanel();
+    void refreshRecentWorkflows();
   }
 }
 
@@ -425,6 +553,7 @@ $("initialize").addEventListener("click", async () => {
 });
 
 $("recheck").addEventListener("click", inspect);
+$("refresh-recent-workflows").addEventListener("click", () => void refreshRecentWorkflows());
 $("add-files").addEventListener("click", addFiles);
 
 $("request-form").addEventListener("submit", async (event) => {
@@ -503,6 +632,7 @@ $("approve-publish-package").addEventListener("click", async () => {
   try {
     const result = await invoke("approve_and_export_media_package", {
       workitemId: currentWorkItemId,
+      version: currentResultVersion,
       content: $("result-content").value,
     });
     if (result.code !== 0) throw new Error(result.msg || "确认失败");
@@ -512,6 +642,7 @@ $("approve-publish-package").addEventListener("click", async () => {
     button.textContent = "已确认，发布包已生成";
     $("performance-panel").hidden = false;
     setMessage("result-message", `发布包已保存到本机：${result.data.package_path}`, false);
+    void refreshRecentWorkflows();
   } catch (error) {
     button.textContent = "确认成果并生成发布包";
     setMessage("result-message", error instanceof Error ? error.message : "发布包生成失败。", true);

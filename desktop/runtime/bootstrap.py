@@ -38,6 +38,9 @@ MESSAGES = {
     "MODEL_CONSENT_REQUIRED": "发送需求文字前，请确认本次数据发送范围和服务地址。",
     "WORKFLOW_ROLES_REQUIRED": "请先启用内容策划、内容制作和运营增长三个角色。",
     "WORKFLOW_INVALID": "内容工作流无法继续，请检查输入和工作空间状态。",
+    "WORKFLOW_ALREADY_RUNNING": "这项内容任务正在处理中，请稍后刷新任务记录。",
+    "WORKFLOW_INTERRUPTED": "上次运行中断；已保留完成步骤，可以确认后继续。",
+    "WORKFLOW_CHECKPOINT_INVALID": "已保存的阶段结果校验失败，已停止生成并保留本机记录；请检查工作空间。",
     "MODEL_UNAVAILABLE": "模型服务暂时不可用；已保留已完成步骤，可以检查网络后继续。",
     "MODEL_RATE_LIMITED": "模型服务请求频率受限；请稍后再试。",
     "MODEL_REJECTED_REQUEST": "模型服务拒绝了请求；请检查接口地址、模型和服务配置。",
@@ -635,7 +638,7 @@ def main(argv=None):
     parser.add_argument("action", choices=(
         "initialize", "health", "set-role", "plan", "provider-config",
         "provider-status", "provider-clear", "provider-test", "execute-media", "approve-export",
-        "performance-review",
+        "performance-review", "recent-workflows", "saved-media-result",
     ))
     parser.add_argument("--data-dir")
     parser.add_argument("--pack", choices=("media", "engineering"), default="media")
@@ -650,6 +653,8 @@ def main(argv=None):
     parser.add_argument("--metrics-file")
     parser.add_argument("--allow-external", action="store_true")
     parser.add_argument("--resume-run-id")
+    parser.add_argument("--run-id")
+    parser.add_argument("--version", type=int)
     args = parser.parse_args(argv)
     try:
         if args.action == "initialize":
@@ -704,6 +709,18 @@ def main(argv=None):
                     args.data_dir, args.workitem_id, provider,
                     allow_external=args.allow_external, resume_run_id=args.resume_run_id,
                 )
+        elif args.action == "recent-workflows":
+            from desktop.runtime.media_workflow import recent_media_workflows
+
+            items = recent_media_workflows(args.data_dir)
+            result = {"code": 0, "msg": "本机任务记录已读取。", "data": {"items": items}}
+        elif args.action == "saved-media-result":
+            from desktop.runtime.media_workflow import load_saved_media_result
+
+            if not args.workitem_id or not args.run_id:
+                raise BootstrapError("WORKFLOW_INVALID")
+            data = load_saved_media_result(args.data_dir, args.workitem_id, args.run_id)
+            result = {"code": 0, "msg": "本机成果已读取。", "data": data}
         elif args.action == "approve-export":
             from desktop.runtime.media_workflow import approve_and_export
 
@@ -713,8 +730,10 @@ def main(argv=None):
             supplied = Path(args.content_file or "")
             if supplied.is_symlink() or supplied.resolve(strict=True) != expected.resolve(strict=True):
                 raise BootstrapError("WORKFLOW_INVALID")
+            if args.version is None or args.version < 1:
+                raise BootstrapError("WORKFLOW_INVALID")
             content = supplied.read_text(encoding="utf-8")
-            result = approve_and_export(root, workitem_id, content)
+            result = approve_and_export(root, workitem_id, content, version=args.version)
         elif args.action == "performance-review":
             from desktop.runtime.media_workflow import record_performance_review
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -31,6 +33,7 @@ SAFE_ERROR_CODES = {
     "OUTPUT_WRITE_FAILED",
     "WORKFLOW_INVALID",
     "WORKFLOW_CHECKPOINT_INVALID",
+    "WORKFLOW_INTERRUPTED",
     "WORKFLOW_STEP_FAILED",
 }
 
@@ -104,6 +107,58 @@ def _workflow_id(value):
     if not isinstance(value, str) or not re.fullmatch(r"RUN-[A-Za-z0-9_-]{1,80}", value):
         raise WorkflowError("WORKFLOW_INVALID")
     return value
+
+
+@contextmanager
+def _workitem_run_lock(root, workitem_id):
+    """Hold an OS lock for one work item so separate app instances cannot overlap."""
+    workitem_dir = root / "workitems" / workitem_id
+    if workitem_dir.is_symlink() or not workitem_dir.is_dir():
+        raise WorkflowError("WORKFLOW_INVALID")
+    lock_path = workitem_dir / ".workflow.lock"
+    if lock_path.is_symlink():
+        raise WorkflowError("WORKFLOW_INVALID")
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    descriptor = os.open(lock_path, flags, 0o600)
+    stream = os.fdopen(descriptor, "r+b")
+    acquired = False
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            stream.seek(0, os.SEEK_END)
+            if stream.tell() == 0:
+                stream.write(b"\0")
+                stream.flush()
+            stream.seek(0)
+            try:
+                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                acquired = True
+            except OSError:
+                acquired = False
+        else:
+            import fcntl
+
+            try:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+            except BlockingIOError:
+                acquired = False
+        yield acquired
+    finally:
+        if acquired:
+            if os.name == "nt":
+                import msvcrt
+
+                stream.seek(0)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        stream.close()
 
 
 def _event(connection, run_id, event_type, step, state, evidence):
@@ -265,6 +320,24 @@ def test_provider(provider):
 
 
 def execute_media_workflow(path, workitem_id, provider, allow_external=False, resume_run_id=None):
+    workitem_id = bootstrap._validate_workitem_id(workitem_id)
+    status = bootstrap.health(path)
+    if status["pack"] != "media":
+        raise WorkflowError("WORKFLOW_INVALID")
+    root = bootstrap.data_root(status["data_dir"])
+    with _workitem_run_lock(root, workitem_id) as acquired:
+        if not acquired:
+            return {
+                "code": 20,
+                "msg": "这项内容任务正在处理中，请稍后刷新任务记录。",
+                "data": {"reason": "WORKFLOW_ALREADY_RUNNING", "resumable": False},
+            }
+        return _execute_media_workflow_locked(
+            root, workitem_id, provider, allow_external=allow_external, resume_run_id=resume_run_id
+        )
+
+
+def _execute_media_workflow_locked(path, workitem_id, provider, allow_external=False, resume_run_id=None):
     workitem_id = bootstrap._validate_workitem_id(workitem_id)
     status = bootstrap.health(path)
     if status["pack"] != "media":
@@ -572,25 +645,161 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
         }
 
 
-def approve_and_export(path, workitem_id, content):
+def recent_media_workflows(path, limit=12):
+    """Return local task metadata and safely recover process-abandoned RUNNING rows."""
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+        raise WorkflowError("WORKFLOW_INVALID")
+    status = bootstrap.health(path)
+    if status["pack"] != "media":
+        raise WorkflowError("WORKFLOW_INVALID")
+    root = bootstrap.data_root(status["data_dir"])
+    with bootstrap._opened(root) as connection:
+        rows = connection.execute(
+            "SELECT r.run_id, r.workitem_id, r.state, r.current_step, r.updated_at, r.error_code, "
+            "(SELECT wr.review_state FROM workflow_results wr WHERE wr.run_id=r.run_id "
+            "ORDER BY wr.version DESC LIMIT 1), "
+            "(SELECT wr.version FROM workflow_results wr WHERE wr.run_id=r.run_id "
+            "ORDER BY wr.version DESC LIMIT 1) "
+            "FROM workflow_runs r ORDER BY r.updated_at DESC, r.created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+
+    items = []
+    for run_id, workitem_id, state, step, updated_at, error_code, review_state, version in rows:
+        run_id = _workflow_id(run_id)
+        workitem_id = bootstrap._validate_workitem_id(workitem_id)
+        if state == "RUNNING":
+            with _workitem_run_lock(root, workitem_id) as acquired:
+                if acquired:
+                    with bootstrap._opened(root) as connection:
+                        current = connection.execute(
+                            "SELECT r.state, r.current_step, r.updated_at, r.error_code, "
+                            "(SELECT wr.review_state FROM workflow_results wr WHERE wr.run_id=r.run_id "
+                            "ORDER BY wr.version DESC LIMIT 1), "
+                            "(SELECT wr.version FROM workflow_results wr WHERE wr.run_id=r.run_id "
+                            "ORDER BY wr.version DESC LIMIT 1) "
+                            "FROM workflow_runs r WHERE r.run_id=? AND r.workitem_id=?",
+                            (run_id, workitem_id),
+                        ).fetchone()
+                        if current and current[0] == "RUNNING":
+                            step = current[1]
+                            updated_at = _now()
+                            connection.execute(
+                                "UPDATE workflow_runs SET state='FAILED', error_code='WORKFLOW_INTERRUPTED', "
+                                "updated_at=? WHERE run_id=? AND state='RUNNING'",
+                                (updated_at, run_id),
+                            )
+                            _event(connection, run_id, "execution-interrupted", step, "FAILED", {
+                                "error_code": "WORKFLOW_INTERRUPTED",
+                                "state_change": "RUNNING->FAILED",
+                                "next_check": "resume-after-reviewing-local-task-history",
+                            })
+                            state = "FAILED"
+                            error_code = "WORKFLOW_INTERRUPTED"
+                        elif current:
+                            state, step, updated_at, error_code, review_state, version = current
+
+        request_file = root / "workitems" / workitem_id / "request.json"
+        channel = "媒体内容"
+        if request_file.is_file() and not request_file.is_symlink():
+            try:
+                request = json.loads(request_file.read_text(encoding="utf-8"))
+                candidate = request.get("channel")
+                if isinstance(candidate, str) and len(candidate) <= 80:
+                    channel = candidate
+            except (OSError, ValueError, TypeError):
+                pass
+        resumable = state in {"FAILED", "BLOCKED"} and error_code != "WORKFLOW_CHECKPOINT_INVALID"
+        items.append({
+            "run_id": run_id,
+            "workitem_id": workitem_id,
+            "state": state,
+            "current_step": step,
+            "updated_at": updated_at,
+            "channel": channel,
+            "error_code": error_code,
+            "has_result": review_state is not None,
+            "review_state": review_state,
+            "version": version,
+            "resumable": resumable,
+        })
+    return items
+
+
+def load_saved_media_result(path, workitem_id, run_id):
+    """Read one exact local result by work item and run; never search outside that scope."""
+    workitem_id = bootstrap._validate_workitem_id(workitem_id)
+    run_id = _workflow_id(run_id)
+    status = bootstrap.health(path)
+    if status["pack"] != "media":
+        raise WorkflowError("WORKFLOW_INVALID")
+    root = bootstrap.data_root(status["data_dir"])
+    with bootstrap._opened(root) as connection:
+        row = connection.execute(
+            "SELECT version, content_json, content_sha256, review_state FROM workflow_results "
+            "WHERE workitem_id=? AND run_id=? ORDER BY version DESC LIMIT 1",
+            (workitem_id, run_id),
+        ).fetchone()
+    if not row:
+        raise WorkflowError("WORKFLOW_INVALID")
+    version, content_json, content_sha256, review_state = row
+    try:
+        result = json.loads(content_json)
+        markdown = result.get("markdown")
+        if not isinstance(markdown, str) or _hash(markdown.encode("utf-8")) != content_sha256:
+            raise WorkflowError("WORKFLOW_INVALID")
+    except (ValueError, TypeError, AttributeError):
+        raise WorkflowError("WORKFLOW_INVALID") from None
+    output_path = root / "outputs" / workitem_id / f"draft-v{version}.md"
+    output_saved = _file_matches(output_path, content_sha256)
+    return {
+        **result,
+        "version": version,
+        "state": review_state,
+        "review_state": review_state,
+        "result_content": markdown,
+        "output_name": output_path.name if output_saved else f"本机成果记录 · v{version}",
+        "output_saved": output_saved,
+        "output_evidence_recorded": True,
+        "saved_record": True,
+        "roles": status["roles"],
+    }
+
+
+def approve_and_export(path, workitem_id, content, version=None):
     workitem_id = bootstrap._validate_workitem_id(workitem_id)
     if not isinstance(content, str) or not content.strip() or len(content) > 1_000_000:
+        raise WorkflowError("WORKFLOW_INVALID")
+    if version is not None and (
+        isinstance(version, bool) or not isinstance(version, int) or version < 1
+    ):
         raise WorkflowError("WORKFLOW_INVALID")
     status = bootstrap.health(path)
     root = bootstrap.data_root(status["data_dir"])
     with bootstrap._opened(root) as connection:
-        row = connection.execute(
-            "SELECT version, run_id, content_json, review_state, content_sha256 "
-            "FROM workflow_results WHERE workitem_id=? ORDER BY version DESC LIMIT 1",
-            (workitem_id,),
-        ).fetchone()
+        if version is None:
+            row = connection.execute(
+                "SELECT version, run_id, content_json, review_state, content_sha256 "
+                "FROM workflow_results WHERE workitem_id=? ORDER BY version DESC LIMIT 1",
+                (workitem_id,),
+            ).fetchone()
+        else:
+            row = connection.execute(
+                "SELECT version, run_id, content_json, review_state, content_sha256 "
+                "FROM workflow_results WHERE workitem_id=? AND version=?",
+                (workitem_id, version),
+            ).fetchone()
         if not row:
             raise WorkflowError("WORKFLOW_INVALID")
         version, run_id, raw_result, review_state, old_digest = row
         result = json.loads(raw_result)
         digest = _hash(content.encode("utf-8"))
         if result.get("markdown") != content or old_digest != digest:
-            version = int(version) + 1
+            next_version = connection.execute(
+                "SELECT COALESCE(MAX(version), 0) + 1 FROM workflow_results WHERE workitem_id=?",
+                (workitem_id,),
+            ).fetchone()[0]
+            version = int(next_version)
             result["version"] = version
             result["markdown"] = content
             result["state"] = "NEEDS_REVIEW"

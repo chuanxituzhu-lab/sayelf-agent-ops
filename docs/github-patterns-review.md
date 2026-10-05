@@ -17,13 +17,13 @@ Observation: `desktop/runtime/media_workflow.py` already persists accepted stage
 
 Observation: cached stage reuse reads `output_json` but does not verify its stored `output_sha256` or reapply the stage output contract. A damaged checkpoint can therefore become downstream model input. This is the immediate, measurable reliability gap.
 
-Observation: frontend work item/run identifiers live in memory; the UI has no history/recovery entry point after restart. Backend checkpoint persistence alone does not complete the ordinary-user recovery workflow. This remains a named follow-up, not an implemented feature.
+Observation: frontend identifiers are transient, while SQLite run IDs, stages and results survive restart. The desktop now lists local run metadata, reopens an exact run result, and safely recovers an abandoned `RUNNING` record after acquiring a per-workitem OS lock. Approval carries the selected result version through to the local package.
 
 ## Adoption order and acceptance
 
-1. Implement now: verify checkpoint digest and output structure before reuse. Corrupt or structurally invalid checkpoints must fail before any new provider call; valid checkpoints must continue to avoid rerunning accepted stages.
-2. Next scoped slice: local task history and recovery after restart, using current SQLite records. Acceptance: restart, select a failed run, confirm remote transfer again, and execute only the unfinished stages. Interrupted `RUNNING` runs need an explicit ownership/recovery policy before they can be resumed.
-3. Then: a local evidence view showing stage status, call count and provider-reported tokens. Missing usage stays unknown; no fabricated cost estimate or remote telemetry.
+1. Implemented: verify checkpoint digest and output structure before reuse. Corrupt or structurally invalid checkpoints fail before any new provider call; valid checkpoints avoid rerunning accepted stages.
+2. Implemented: local task history and restart recovery use the current SQLite records. The lock proves ownership; resume still checks the original input fingerprint and provider configuration, requests fresh consent for remote transfer, and reuses only accepted checkpoints.
+3. Next scoped slice: a local evidence view showing stage status, call count and provider-reported tokens. Missing usage stays unknown; no fabricated cost estimate or remote telemetry.
 4. When a real publishing connector exists: preview its exact account, destination, content version and parameters, bind approval to that call, and handle rejection without silently retrying.
 
 No upstream source was copied, no dependency was added, and no license compatibility claim is made. Before copying code or distributing a dependency, inspect the exact revision's license and notices. Dify's repository identifies additional license conditions; n8n describes itself as fair-code, so availability on GitHub alone is not permission for unrestricted redistribution.
@@ -59,3 +59,26 @@ Primary evidence:
 17. Excluded: framework migration, autonomous publishing, cloud tracing, new agents and broad workflow builders.
 
 Validation: 38 Python evaluations pass, including digest mismatch and invalid-schema checkpoints with zero new provider calls, plus valid-checkpoint reuse. Vite production build passes. No real model request was made. The previously generated Windows installer has not been rebuilt for this source change.
+
+## Build Decision Record: local workflow history and restart recovery
+
+1. Task: after reopening the desktop app, find recent media runs, reopen saved results, and safely resume failed or interrupted runs.
+2. Closest capability: SQLite workflow/run/result tables and stage checkpoints already exist; LangGraph and Dify demonstrate persisted pause/resume; current desktop loses selected run IDs when the WebView restarts.
+3. Step 0: **Integrate**.
+3a. Execution Verdict: **GO**, using existing records and stdlib OS file locks; no workflow framework or schema expansion.
+4. Difference: recoverable run IDs survive UI restart; an interrupted `RUNNING` run is recoverable only after an exclusive per-workitem lock proves its worker is gone; active runs remain untouched and two app instances cannot run the same work item concurrently. Reopening or approving a historical result is bound to its exact run/version.
+5. Evidence: focused tests cover live-lock protection, stale-run recovery, resuming only unfinished stages, result reload, version-bound approval, and fresh remote consent at the existing UI gate.
+6. Minimum Core: existing workflow record/checkpoint contract; UI history stays in desktop adapter.
+7. Plugin boundary: provider, Core, industry Packs and role registry unchanged.
+8. Local-first: run history and content are read from local SQLite and work item files; no network query.
+9. Data: task names/requests/results are Sensitive and stay local; generic source, docs and synthetic tests are Public after review.
+10. Public release: source/docs/tests only to the existing PR; no task data, databases, icons, installers or screenshots.
+11. Transfer: only reviewed generic code and docs to the already-authorized GitHub repository; leak scan before push.
+12. State/check: live lock means RUNNING/read-only; unlocked RUNNING becomes FAILED/INTERRUPTED; FAILED/BLOCKED may resume after normal input fingerprint and provider checks; result records reopen by exact run/version.
+13. Labels: Fact — run IDs are only in WebView memory; Fact — SQLite keeps runs and results; Hypothesis — process lock release reliably signals worker exit, tested on supported Windows/macOS runtime APIs.
+14. Rollback: additive hidden lock files under work item directories; no migration. Revert app code to roll back; existing DB rows and files stay intact.
+15. WebUI: Required; history/reopen/resume needs an ordinary user action. Keep one card and the path open → select saved work → resume or view result.
+16. Simplest implementation: existing runtime history query, exact-result read, per-workitem stdlib advisory lock, and current Tauri commands; no new dependency.
+17. Explicitly not building: workflow canvas, cloud history sync, team inbox, completed-run analytics, automatic retry, or background job service.
+
+Validation: all 41 Python evaluations pass, including multi-process live-lock protection, stale `RUNNING` recovery, local result reload, and exact-version approval. All 3 Rust tests pass, including bounded workflow ID validation. Vite production build and all 5 role recommender tests pass. No real model request or external content transfer was made. Windows installer rebuild is pending.
