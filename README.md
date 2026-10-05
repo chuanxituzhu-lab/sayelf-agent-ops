@@ -1,8 +1,10 @@
 # Sayelf Agent Ops
 
-![Sayelf 山野精灵 Logo](desktop/tauri/src-tauri/icons/128x128.png)
+![Sayelf 山野精灵 Logo](desktop/tauri/public/sayelf-logo.png)
 
 **通用 Agent Ops 底座，自媒体公司优先落地。**
+
+WebUI、favicon、桌面窗口和安装包使用同一套“山野精灵”品牌图标资源。
 
 Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗位和技能规划工作。Core 负责通用流程，Industry Pack 承载行业规则；第一条业务落地路线是自媒体公司的选题、内容策划与运营协作。
 
@@ -87,6 +89,8 @@ State: READY
 # Sayelf Agent Ops
 
 **A general Agent Ops foundation, with a media company as its first vertical.**
+
+The WebUI, favicon, desktop window, and installers use the same Sayelf brand asset.
 
 Sayelf turns a business request into a WorkItem, then plans it by deliverable, industry, role, and skill. The Core owns the shared workflow; replaceable Industry Packs provide domain rules. The first business workflow targets a self-media company, starting with ideation, content planning, and operations collaboration.
 
