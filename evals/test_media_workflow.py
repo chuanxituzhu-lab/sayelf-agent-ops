@@ -1,3 +1,4 @@
+import hashlib
 import json
 from contextlib import closing
 from pathlib import Path
@@ -293,6 +294,34 @@ class MediaWorkflowTests(unittest.TestCase):
                 (failed["data"]["run_id"],),
             ).fetchall()
         self.assertEqual(3, len(stages))
+
+    def test_invalid_checkpoint_is_rejected_before_new_provider_calls(self):
+        for matching_digest in (False, True):
+            with self.subTest(matching_digest=matching_digest):
+                failed = execute_media_workflow(
+                    self.root, "WI-MEDIA-1", FakeProvider(fail_stage="自媒体内容制作岗位")
+                )
+                run_id = failed["data"]["run_id"]
+                corrupted = '{"core_message":"incomplete checkpoint"}'
+                digest = hashlib.sha256(corrupted.encode("utf-8")).hexdigest() if matching_digest else "invalid"
+                with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as connection, connection:
+                    connection.execute(
+                        "UPDATE workflow_stages SET output_json=?, output_sha256=? WHERE run_id=?",
+                        (corrupted, digest, run_id),
+                    )
+                retry = FakeProvider()
+                response = execute_media_workflow(
+                    self.root, "WI-MEDIA-1", retry, resume_run_id=run_id
+                )
+                self.assertEqual(20, response["code"])
+                self.assertEqual("WORKFLOW_CHECKPOINT_INVALID", response["data"]["reason"])
+                self.assertFalse(response["data"]["resumable"])
+                self.assertEqual([], retry.calls)
+                with closing(sqlite3.connect(self.root / "runtime.sqlite3")) as connection:
+                    state = connection.execute(
+                        "SELECT state FROM workflow_runs WHERE run_id=?", (run_id,)
+                    ).fetchone()[0]
+                self.assertEqual("FAILED", state)
 
     def test_unrecognized_provider_error_code_is_redacted(self):
         secret_marker = "USER_SUPPLIED_ERROR_MARKER"

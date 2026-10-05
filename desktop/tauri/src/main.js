@@ -327,12 +327,14 @@ async function runMediaWorkflow() {
     } else if (result.code === 11 && result.data?.missing_roles) {
       const names = result.data.missing_roles.join("、");
       setMessage("execution-message", `请先点击“启用完整内容流程”，启用缺少的角色：${names}。`, true);
-    } else if (result.data?.run_id) {
+    } else if (result.data?.run_id && result.data.resumable === true) {
       currentRunId = result.data.run_id;
       $("provider-consent").checked = false;
       setMessage("execution-message", `${result.msg} 可确认后继续。${result.data.current_step || ""}`, true);
       updateExecutionPanel();
     } else {
+      currentRunId = null;
+      $("provider-consent").checked = false;
       setMessage("execution-message", result.msg || "内容工作流没有启动。", true);
     }
   } catch {

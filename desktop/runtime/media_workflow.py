@@ -30,6 +30,7 @@ SAFE_ERROR_CODES = {
     "MODEL_UNAVAILABLE",
     "OUTPUT_WRITE_FAILED",
     "WORKFLOW_INVALID",
+    "WORKFLOW_CHECKPOINT_INVALID",
     "WORKFLOW_STEP_FAILED",
 }
 
@@ -371,11 +372,17 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
         for stage in STAGES:
             with bootstrap._opened(root) as connection:
                 cached = connection.execute(
-                    "SELECT output_json FROM workflow_stages WHERE run_id=? AND stage=?",
+                    "SELECT output_json, output_sha256 FROM workflow_stages WHERE run_id=? AND stage=?",
                     (run_id, stage),
                 ).fetchone()
             if cached:
-                outputs[stage] = json.loads(cached[0])
+                if _hash(cached[0].encode("utf-8")) != cached[1]:
+                    raise WorkflowError("WORKFLOW_CHECKPOINT_INVALID")
+                try:
+                    checkpoint = json.loads(cached[0])
+                    outputs[stage] = _validate_stage(stage, checkpoint)
+                except (ValueError, TypeError, WorkflowError):
+                    raise WorkflowError("WORKFLOW_CHECKPOINT_INVALID") from None
                 continue
             prompt = stage_inputs[stage]
             payload = dict(prompt["payload"])
@@ -555,8 +562,13 @@ def execute_media_workflow(path, workitem_id, provider, allow_external=False, re
         _record_run(root, run_id, workitem_id, "FAILED", current, endpoint, model, input_hash, code)
         return {
             "code": 20,
-            "msg": "内容生成在一个步骤暂停；已保留完成步骤，可在确认后从失败步骤继续。",
-            "data": {"reason": code, "run_id": run_id, "current_step": current, "resumable": True},
+            "msg": (
+                "已保存的阶段结果校验失败，已停止生成并保留本机记录；请检查工作空间。"
+                if code == "WORKFLOW_CHECKPOINT_INVALID"
+                else "内容生成在一个步骤暂停；已保留完成步骤，可在确认后从失败步骤继续。"
+            ),
+            "data": {"reason": code, "run_id": run_id, "current_step": current,
+                     "resumable": code != "WORKFLOW_CHECKPOINT_INVALID"},
         }
 
 
