@@ -160,3 +160,24 @@ Research references: [LangGraph durable execution and human input](https://docs.
 15. WebUI: **Required**, integrated into the existing role manager so the ordinary path is input → recommendations → explicit activation.
 16. Simplest implementation: a small local matcher module plus the current runtime role list; Node's built-in test runner, no new dependency.
 17. Explicitly not building: arbitrary AI-generated roles, automatic role activation, custom role persistence, a new pack loader, model/API use, or organization-chart generation.
+
+## Intake boundary and local-write consistency — 2026-10-05
+
+1. Real task: keep a rejected/failed attachment intake from leaving an orphan WorkItem or evidence folder, and make the desktop/Core text limits agree.
+2. Closest existing capabilities: Rust already caps each file at 15 MiB and the total at 30 MiB; frontend extraction caps each file's text at 30,000 characters; Python Core rejects total extracted text above 60,000 only after the desktop has copied files and written the request. Generated outputs already use atomic writes, while intake uses direct writes.
+3. Step 0: **Improve** the existing intake path; no new feature or subsystem.
+3a. Execution Verdict: **GO** for preflight validation and rollback of only directories/files created by the failed intake.
+4. Measurable difference: aggregate extracted text over 60,000 characters is rejected before disk changes; bounded file reads happen before directory creation; a recoverable input-write failure removes only newly created, still-empty/owned intake paths.
+5. Success evidence: Rust tests cover the 60,000 boundary, single-file cap, and cleanup without touching a pre-existing conflicting directory; existing media workflow and build checks pass.
+6. Minimum Core: unchanged. The 60,000-character contract remains the Python Core's existing limit.
+7. Plugin boundary: unchanged local file chooser, OCR and Core contracts; Tauri enforces the contract before persisting the WorkItem.
+8. Local-first: all file reads, OCR text, and outputs remain in the chosen local data directory; no provider call or network transfer.
+9. Data classification: request text, original files, OCR text, and local paths are **Sensitive**; synthetic tests and generic source are **Public** after staged review.
+10. Public release: include only reviewed generic source/docs/tests in the existing draft PR; installer stays local.
+11. Transfer: none during verification; later GitHub transfer requires staged-diff and artifact leak checks.
+12. State/check rule: reject invalid intake before it creates a WorkItem; preserve files after a valid WorkItem is committed for planning, role activation, and recovery.
+13. Epistemic boundary: the observed gap is the mismatched 30,000-per-file / 60,000-total checks and write-before-validation order; the proposed preflight/rollback closes this deterministic failure path.
+14. Evolution/rollback: no schema change; reverting the focused Tauri validation restores the prior limits behavior without migrating user data.
+15. WebUI: reuse the current intake and error message surface; show a concrete size-limit correction.
+16. Simplest implementation: standard-library Rust count/size preflight plus create-new file writes and cleanup; no dependency.
+17. Explicitly not building: resumable partial uploads, a generalized transaction layer, data cleanup screens, or a new artifact storage system.

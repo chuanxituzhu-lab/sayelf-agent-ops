@@ -5,6 +5,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashSet,
     fs,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -19,6 +20,8 @@ use tauri_plugin_shell::ShellExt;
 const MAX_FILE_BYTES: u64 = 15 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 30 * 1024 * 1024;
 const MAX_FILES: usize = 5;
+const MAX_EXTRACTED_CHARS_PER_FILE: usize = 30_000;
+const MAX_TOTAL_EXTRACTED_CHARS: usize = 60_000;
 static NEXT_WORKITEM: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Default)]
@@ -285,6 +288,124 @@ fn next_workitem_id() -> String {
     format!("WI-{millis}-{sequence}")
 }
 
+fn validate_workitem_input(request: &str, attachments: &[ExtractedEvidence]) -> Result<(), String> {
+    if request.trim().is_empty()
+        || request.chars().count() > 20_000
+        || attachments.len() > MAX_FILES
+    {
+        return Err("请填写需求，并限制在 5 个以内的附件。".into());
+    }
+    let mut total_chars = 0;
+    for attachment in attachments {
+        let chars = attachment.extracted_text.chars().count();
+        if chars > MAX_EXTRACTED_CHARS_PER_FILE {
+            return Err("单个附件识别文字超过 30,000 字，请减少或拆分材料。".into());
+        }
+        total_chars += chars;
+        if total_chars > MAX_TOTAL_EXTRACTED_CHARS {
+            return Err("附件识别文字总量超过 60,000 字，请减少附件或缩短文字。".into());
+        }
+    }
+    Ok(())
+}
+
+fn read_selected_file(path: &Path) -> Result<Vec<u8>, String> {
+    let file = fs::File::open(path).map_err(|_| "selected file unavailable")?;
+    let mut bytes = Vec::new();
+    file.take(MAX_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "selected file unavailable")?;
+    if bytes.len() as u64 > MAX_FILE_BYTES {
+        return Err("附件大小超过限制，请重新选择较小文件。".into());
+    }
+    Ok(bytes)
+}
+
+fn write_new_file(
+    path: &Path,
+    bytes: &[u8],
+    created_files: &mut Vec<PathBuf>,
+) -> Result<(), String> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|_| "cannot save work item")?;
+    created_files.push(path.to_path_buf());
+    file.write_all(bytes).map_err(|_| "cannot save work item")?;
+    Ok(())
+}
+
+fn persist_workitem_input(
+    root: &Path,
+    workitem_id: &str,
+    request: &str,
+    channel: &str,
+    attachments: &[ExtractedEvidence],
+    paths: &[PathBuf],
+    file_contents: &[Vec<u8>],
+) -> Result<PathBuf, String> {
+    if attachments.len() != paths.len() || attachments.len() != file_contents.len() {
+        return Err("cannot save work item".into());
+    }
+    let workitem_dir = root.join("workitems").join(workitem_id);
+    let evidence_dir = root.join("evidence").join(workitem_id);
+    fs::create_dir(&workitem_dir).map_err(|_| "cannot create work item")?;
+    let has_evidence = !attachments.is_empty();
+    if has_evidence && fs::create_dir(&evidence_dir).is_err() {
+        let _ = fs::remove_dir(&workitem_dir);
+        return Err("cannot create evidence folder".into());
+    }
+
+    let mut created_files = Vec::new();
+    let result = (|| {
+        let mut request_attachments = Vec::with_capacity(attachments.len());
+        for (index, ((attachment, source), bytes)) in
+            attachments.iter().zip(paths).zip(file_contents).enumerate()
+        {
+            let original_name = source
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| "invalid file name".to_string())?;
+            let name = if index == 0 {
+                original_name.to_string()
+            } else {
+                format!("{}-{original_name}", index + 1)
+            };
+            let destination = evidence_dir.join(&name);
+            write_new_file(&destination, bytes, &mut created_files)?;
+            request_attachments.push(json!({
+                "name": name,
+                "relative_path": format!("evidence/{workitem_id}/{name}"),
+                "extracted_text": attachment.extracted_text.as_str(),
+                "extraction_status": attachment.extraction_status,
+            }));
+        }
+        let payload = json!({
+            "id": workitem_id,
+            "request": request.trim(),
+            "channel": channel,
+            "attachments": request_attachments,
+        });
+        let request_path = workitem_dir.join("request.json");
+        let request_bytes =
+            serde_json::to_vec_pretty(&payload).map_err(|_| "cannot save request".to_string())?;
+        write_new_file(&request_path, &request_bytes, &mut created_files)?;
+        Ok(request_path)
+    })();
+
+    if result.is_err() {
+        for path in created_files.into_iter().rev() {
+            let _ = fs::remove_file(path);
+        }
+        if has_evidence {
+            let _ = fs::remove_dir(&evidence_dir);
+        }
+        let _ = fs::remove_dir(&workitem_dir);
+    }
+    result
+}
+
 #[tauri::command]
 async fn create_workitem(
     app: AppHandle,
@@ -293,12 +414,7 @@ async fn create_workitem(
     channel: String,
     attachments: Vec<ExtractedEvidence>,
 ) -> Result<Value, String> {
-    if request.trim().is_empty()
-        || request.chars().count() > 20_000
-        || attachments.len() > MAX_FILES
-    {
-        return Err("请填写需求，并限制在 5 个以内的附件。".into());
-    }
+    validate_workitem_input(&request, &attachments)?;
     let data_dir = require_workspace(&app)?;
     let health = invoke_runtime(&app, "health", Some(data_dir.clone()), None, Vec::new()).await?;
     if health.get("code").and_then(Value::as_i64) != Some(0) {
@@ -318,57 +434,31 @@ async fn create_workitem(
             return Err("请通过文件选择窗口重新添加附件。".into());
         }
     }
+    let mut file_contents = Vec::with_capacity(paths.len());
+    let mut total = 0_u64;
+    for source in &paths {
+        let bytes = read_selected_file(source)?;
+        total += bytes.len() as u64;
+        if total > MAX_TOTAL_BYTES {
+            return Err("附件总大小不能超过 30 MiB。".into());
+        }
+        file_contents.push(bytes);
+    }
     let root = PathBuf::from(&data_dir)
         .canonicalize()
         .map_err(|_| "workspace unavailable")?;
     let workitem_id = next_workitem_id();
-    let workitem_dir = root.join("workitems").join(&workitem_id);
-    let evidence_dir = root.join("evidence").join(&workitem_id);
-    fs::create_dir(&workitem_dir).map_err(|_| "cannot create work item")?;
-    if !attachments.is_empty() {
-        fs::create_dir(&evidence_dir).map_err(|_| "cannot create evidence folder")?;
-    }
-    let mut request_attachments = Vec::new();
-    let mut total = 0_u64;
-    for (index, (attachment, source)) in attachments.iter().zip(paths.iter()).enumerate() {
-        let bytes = fs::read(source).map_err(|_| "selected file unavailable")?;
-        total += bytes.len() as u64;
-        if total > MAX_TOTAL_BYTES || bytes.len() as u64 > MAX_FILE_BYTES {
-            return Err("附件大小超过限制，请重新选择较小文件。".into());
-        }
-        let original_name = source
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| "invalid file name".to_string())?;
-        let name = if index == 0 {
-            original_name.to_string()
-        } else {
-            format!("{}-{original_name}", index + 1)
-        };
-        let destination = evidence_dir.join(&name);
-        fs::write(&destination, bytes).map_err(|_| "cannot save evidence")?;
-        request_attachments.push(json!({
-            "name": name,
-            "relative_path": format!("evidence/{workitem_id}/{name}"),
-            "extracted_text": attachment.extracted_text.chars().take(30_000).collect::<String>(),
-            "extraction_status": attachment.extraction_status,
-        }));
-    }
-    let payload = json!({
-        "id": workitem_id,
-        "request": request.trim(),
-        "channel": channel,
-        "attachments": request_attachments,
-    });
-    fs::write(
-        workitem_dir.join("request.json"),
-        serde_json::to_vec_pretty(&payload).map_err(|_| "cannot save request")?,
-    )
-    .map_err(|_| "cannot save request")?;
-    let request_path = workitem_dir
-        .join("request.json")
-        .to_string_lossy()
-        .into_owned();
+    let request_path = persist_workitem_input(
+        &root,
+        &workitem_id,
+        &request,
+        &channel,
+        &attachments,
+        &paths,
+        &file_contents,
+    )?
+    .to_string_lossy()
+    .into_owned();
     invoke_runtime(
         &app,
         "plan",
@@ -761,4 +851,79 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("Sayelf Agent Ops desktop failed to start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn evidence(text: String) -> ExtractedEvidence {
+        ExtractedEvidence {
+            path: String::new(),
+            extracted_text: text,
+            extraction_status: String::new(),
+        }
+    }
+
+    fn temporary_root() -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("sayelf-intake-{}-{stamp}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        root
+    }
+
+    #[test]
+    fn extracted_text_limits_match_the_runtime_contract() {
+        let exact_limit = vec![
+            evidence("中".repeat(MAX_EXTRACTED_CHARS_PER_FILE)),
+            evidence("字".repeat(MAX_EXTRACTED_CHARS_PER_FILE)),
+        ];
+        assert!(validate_workitem_input("需求", &exact_limit).is_ok());
+
+        let over_total = vec![
+            evidence("中".repeat(MAX_EXTRACTED_CHARS_PER_FILE)),
+            evidence("字".repeat(MAX_EXTRACTED_CHARS_PER_FILE)),
+            evidence("超".to_string()),
+        ];
+        assert_eq!(
+            validate_workitem_input("需求", &over_total),
+            Err("附件识别文字总量超过 60,000 字，请减少附件或缩短文字。".into())
+        );
+
+        let over_file = vec![evidence("字".repeat(MAX_EXTRACTED_CHARS_PER_FILE + 1))];
+        assert_eq!(
+            validate_workitem_input("需求", &over_file),
+            Err("单个附件识别文字超过 30,000 字，请减少或拆分材料。".into())
+        );
+    }
+
+    #[test]
+    fn failed_evidence_directory_creation_removes_only_the_new_workitem_folder() {
+        let root = temporary_root();
+        let workitems = root.join("workitems");
+        let evidence_root = root.join("evidence");
+        fs::create_dir(&workitems).unwrap();
+        fs::create_dir_all(evidence_root.join("WI-COLLISION")).unwrap();
+        let sentinel = evidence_root.join("WI-COLLISION").join("keep.txt");
+        fs::write(&sentinel, b"existing data").unwrap();
+
+        let result = persist_workitem_input(
+            &root,
+            "WI-COLLISION",
+            "request",
+            "channel",
+            &[evidence("text".into())],
+            &[PathBuf::from("source.txt")],
+            &[vec![1]],
+        );
+
+        assert_eq!(result, Err("cannot create evidence folder".into()));
+        assert!(!workitems.join("WI-COLLISION").exists());
+        assert_eq!(fs::read(&sentinel).unwrap(), b"existing data");
+        fs::remove_dir_all(root).unwrap();
+    }
 }
