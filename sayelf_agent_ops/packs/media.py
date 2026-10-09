@@ -93,6 +93,7 @@ def build_pack() -> IndustryPack:
             "visual-package", "media", "M2", "media.creative-producer",
             ("media.visual-direction", "media.article-image-generation", "media.image-content-matching"),
             "最终交付物是已有内容的视觉成果。",
+            composition_predicate=lambda text: any(term in text for term in ("生成配图", "制作配图", "生成图片", "制作图片", "设计封面", "生成封面")),
         ),
         RouteRule(
             "media.platform-package",
@@ -121,6 +122,7 @@ def build_pack() -> IndustryPack:
             "article", "media", "M1", "media.content-planner",
             ("media.content-structure", "media.longform-writing"),
             "最终交付物是媒体文章；工程、造价等词仅可作为主题或输入材料。",
+            composition_predicate=lambda text: any(term in text for term in ("写", "撰写", "创作", "生成文章", "写一篇")),
         ),
         RouteRule(
             "media.site-content",

@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { extractEvidence } from "./intake.js";
-import { recommendIndustryRoles } from "./industry_recommendation.js";
+import { generateWorkforceBlueprint } from "./workforce_blueprint.js";
 
 const $ = (id) => document.getElementById(id);
 let selectedPath = null;
@@ -8,6 +8,7 @@ let ready = false;
 let selectedEvidence = [];
 let currentWorkItemId = null;
 let pendingRoleId = null;
+let pendingRoleIds = [];
 let currentRunId = null;
 let currentResultVersion = null;
 let currentIsGeneratedDraft = false;
@@ -15,11 +16,11 @@ let currentIsKernelResult = false;
 let currentDeliverable = null;
 // Deliverables the Agent Ops kernel runs (producer self-check + independent review).
 const kernelTasks = { "title-list": "生成标题", "video-script": "生成短视频脚本" };
+kernelTasks["software-feature-package"] = "生成软件功能成果包";
 let approvedPackage = false;
 let providerConfig = { configured: false, endpoint: "", model: "" };
 let currentPack = null;
 let currentRoles = [];
-let recommendedRoleIds = new Set();
 
 const labels = {
   database: "本地数据库",
@@ -27,7 +28,62 @@ const labels = {
   core: "Agent Ops Core",
   registry: "角色与技能注册表",
 };
-const packLabels = { media: "内容与媒体", engineering: "工程与项目" };
+const packLabels = { media: "内容与媒体", engineering: "工程与项目", software: "软件开发" };
+const profileStorageKey = "sayelf-workforce-profile-v1";
+
+function restoreWorkforceProfile() {
+  try {
+    const profile = JSON.parse(localStorage.getItem(profileStorageKey) || "null");
+    if (typeof profile?.industry === "string") $("industry-input").value = profile.industry;
+    if (typeof profile?.workDescription === "string") $("work-description").value = profile.workDescription;
+  } catch { /* Keep first-run defaults if local storage is unavailable or invalid. */ }
+}
+
+function renderBlueprint({ scroll = false, reveal = false } = {}) {
+  const industry = $("industry-input").value;
+  const workDescription = $("work-description").value;
+  const result = generateWorkforceBlueprint(industry, workDescription);
+  if (result.status !== "generated") {
+    setMessage("message", "请填写行业与业务内容（最多 1200 个字符），并检查典型工作描述长度。", true);
+    $("blueprint-card").hidden = true;
+    return false;
+  }
+  try {
+    localStorage.setItem(profileStorageKey, JSON.stringify({ industry, workDescription }));
+  } catch { /* The current session can still use the generated local proposal. */ }
+  $("blueprint-state").textContent = "岗位方案 · 未激活";
+  $("blueprint-summary").textContent = `${result.industry}${result.workDescription ? ` · ${result.workDescription}` : ""} · 最少 ${result.roleCount} 个岗位`;
+  $("blueprint-roles").replaceChildren(...result.roles.map((role, index) => {
+    const card = document.createElement("article");
+    card.className = "blueprint-role";
+    const heading = document.createElement("div");
+    heading.className = "blueprint-role-heading";
+    const name = document.createElement("strong");
+    name.textContent = `${index + 1}. ${role.name}`;
+    const state = document.createElement("span");
+    state.className = "role-state inactive";
+    state.textContent = "方案角色";
+    heading.append(name, state);
+    const responsibility = document.createElement("p");
+    responsibility.textContent = role.responsibility;
+    const contract = document.createElement("dl");
+    contract.className = "blueprint-contract";
+    for (const [label, value] of [["输入", role.input], ["工作成果", role.output], ["验收标准", role.acceptance]]) {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const detail = document.createElement("dd");
+      detail.textContent = value;
+      contract.append(term, detail);
+    }
+    card.append(heading, responsibility, contract);
+    return card;
+  }));
+  $("blueprint-note").textContent = result.notice;
+  $("blueprint-card").hidden = !reveal;
+  if (reveal && scroll) $("blueprint-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  if (!reveal) setMessage("message", "岗位方案已在本机准备；实际工作成果返回后才显示岗位闭环内容。", false);
+  return true;
+}
 
 function setMessage(id, message, error = false) {
   const element = $(id);
@@ -65,14 +121,7 @@ function renderRoles(roles = []) {
     const responsibility = document.createElement("p");
     responsibility.className = "subtle";
     responsibility.textContent = role.responsibility;
-    if (recommendedRoleIds.has(role.id)) {
-      const badge = document.createElement("span");
-      badge.className = "role-recommendation-badge";
-      badge.textContent = "行业建议";
-      detail.append(name, badge, responsibility);
-    } else {
-      detail.append(name, responsibility);
-    }
+    detail.append(name, responsibility);
     const state = document.createElement("span");
     state.className = `role-state ${role.active ? "active" : "inactive"}`;
     state.textContent = role.active ? "已激活" : "未激活";
@@ -93,7 +142,8 @@ function render(data) {
   currentRoles = data.roles || [];
   $("status-pill").textContent = "本机已就绪";
   $("status-pill").className = "pill check-ok";
-  $("initialize").textContent = "重新检查环境";
+  $("initialize").textContent = "生成岗位方案";
+  $("choose-location").textContent = "打开其他工作空间";
   $("data-location").textContent = data.data_dir;
   $("pack").value = data.pack;
   $("pack").disabled = true;
@@ -101,18 +151,48 @@ function render(data) {
   renderChecks();
   renderRoles(currentRoles);
   $("role-management-card").hidden = false;
-  $("role-recommendation-note").textContent = `当前工作空间使用“${packLabels[data.pack] || data.pack}”行业包；只推荐该行业包中已注册的岗位。`;
+  $("role-recommendation-note").textContent = `“${packLabels[data.pack] || data.pack}”只是示范包；下面只展示已登记的可用岗位。其他行业的岗位方案需连接相应技能后才能执行。`;
   $("activate-media-team").hidden = data.pack !== "media";
-  $("workbench").hidden = data.pack !== "media";
+  $("activate-media-team").textContent = "启用完整内容流程";
+  $("workbench").hidden = !["media", "engineering", "software"].includes(data.pack);
+  $("workbench-title").textContent = data.pack === "software" ? "创建一项软件开发工作"
+    : data.pack === "engineering" ? "创建一项工程专业工作" : "创建一项内容工作";
+  $("channel-field").hidden = data.pack !== "media";
+  $("channel").required = data.pack === "media";
+  if (data.pack === "software") $("channel").value = "软件开发";
+  else if (data.pack === "engineering") $("channel").value = "工程与项目";
+  else if ($("channel").value === "软件开发" || $("channel").value === "工程与项目") $("channel").value = "小红书";
+  $("workbench-intro").textContent = data.pack === "software"
+    ? "用文字描述想完成的软件工作。Sayelf 会根据范围匹配最少岗位；明确的跨模块或架构任务才增加方案设计岗，并保留独立 QA。成果先保存在本机供你审阅。"
+    : data.pack === "engineering"
+      ? "写下工程专业任务，可添加文字、PDF 或照片。Sayelf 会组合已注册的专业岗位，并按成果依赖排列步骤；超出已注册能力的事项会明确提示。"
+      : "写下要完成的内容工作，添加文字、PDF 或照片。Sayelf 会识别交付要求，只组合必需的已注册岗位，按成果依赖安排顺序，并保留独立审核；当前不会理解照片场景或物体，请在文字中说明画面内容。";
+  $("attachment-controls").hidden = data.pack === "software";
+  $("attachment-list").hidden = data.pack === "software";
+  $("request").placeholder = data.pack === "software"
+    ? "例如：修复登录失败；或规划一个跨模块会员系统并实现、测试。简单工作只分配开发与 QA，复杂方案才增加设计岗位。"
+    : data.pack === "engineering"
+      ? "例如：对比两版 BOQ 和施工图差异；检查一批试验报告并整理缺项。系统只使用当前行业包已注册的专业能力。"
+      : "例如：根据产品资料写小红书新品体验笔记并生成配图方案；系统按明确交付内容匹配最少岗位。";
   if (data.pack === "media") {
     $("recent-workflows-card").hidden = false;
     setMessage("message", `本地环境已就绪。${data.roles.length} 个媒体角色已注册；角色需要激活后才会接收工作。`);
     void refreshProviderStatus();
     void refreshRecentWorkflows();
+  } else if (data.pack === "software") {
+    $("recent-workflows-card").hidden = true;
+    setMessage("message", `本地环境已就绪。${data.roles.length} 个软件岗位已注册；系统会按任务范围选择必需岗位，独立 QA 保留。`);
+    void refreshProviderStatus();
+  } else if (data.pack === "engineering") {
+    $("recent-workflows-card").hidden = true;
+    setMessage("message", `本地环境已就绪。${data.roles.length} 个工程岗位已注册；仅在任务涉及对应交付时才加入工作流。`);
   } else {
     $("recent-workflows-card").hidden = true;
     setMessage("message", "本地环境已就绪。当前桌面需求工作流优先支持自媒体公司，请在首次设置时选择“内容与媒体”。");
   }
+  try {
+    if (localStorage.getItem(profileStorageKey)) renderBlueprint({ scroll: false, reveal: false });
+  } catch { /* Existing workspace remains usable when browser storage is disabled. */ }
 }
 
 const workflowStateLabels = {
@@ -265,14 +345,19 @@ function updateExecutionPanel() {
   if (!currentWorkItemId || currentIsGeneratedDraft || currentIsKernelResult) return;
   const panel = $("execution-panel");
   if (!panel) return;
+  if (currentPack === "engineering") {
+    panel.hidden = true;
+    return;
+  }
   panel.hidden = false;
   const button = $("run-media-workflow");
   const kernelButton = $("run-kernel-task");
   const kernelLabel = kernelTasks[currentDeliverable];
+  const canRunFullMediaWorkflow = currentPack === "media" && currentDeliverable === "platform-package";
+  panel.hidden = !kernelLabel && !canRunFullMediaWorkflow;
   kernelButton.hidden = !kernelLabel;
   kernelButton.textContent = kernelLabel || "";
-  // Titles have no publish package; video scripts keep the full package as a second option.
-  button.hidden = currentDeliverable === "title-list";
+  button.hidden = !canRunFullMediaWorkflow;
   button.className = kernelLabel ? "secondary" : "primary";
   const consent = $("provider-consent");
   if (!providerConfig.configured || !providerConfig.credential_available) {
@@ -284,9 +369,14 @@ function updateExecutionPanel() {
     consent.disabled = true;
   } else {
     const local = providerIsLocal();
+    $("consent-text").textContent = currentPack === "software"
+      ? "我确认本次将需求文字，以及本流程生成的设计和实现文字发送到上述模型地址；不会上传原始文件或自动写入项目。"
+      : "我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。";
     $("provider-target").textContent = local
-      ? `本机模型：${providerConfig.endpoint} · ${providerConfig.model}。本次只读取工作单文字和 OCR 文字。`
-      : `本次将把工作单文字和 OCR 提取文字发送至：${providerConfig.endpoint}（${providerConfig.model}）。原始附件不会发送。`;
+      ? `本机模型：${providerConfig.endpoint} · ${providerConfig.model}。软件工作流会依次处理需求、设计和代码成果。`
+      : currentPack === "software"
+        ? `本次工作流将把需求文字和生成的设计、实现内容发送至：${providerConfig.endpoint}（${providerConfig.model}）。`
+        : `本次将把工作单文字和 OCR 提取文字发送至：${providerConfig.endpoint}（${providerConfig.model}）。原始附件不会发送。`;
     consent.disabled = local;
     button.disabled = !local && !consent.checked;
     kernelButton.disabled = !local && !consent.checked;
@@ -300,6 +390,9 @@ function needsSetup(result) {
   $("workbench").hidden = true;
   $("status-pill").textContent = "等待设置";
   $("status-pill").className = "pill";
+  $("pack").disabled = false;
+  $("choose-location").disabled = false;
+  $("initialize").textContent = "创建工作空间";
   setMessage("message", result.msg || "请选择行业包并开始设置。", result.data?.reason !== "SETUP_REQUIRED");
 }
 
@@ -309,7 +402,8 @@ async function inspect() {
     if (result.code === 0) render(result.data);
     else needsSetup(result);
   } catch {
-    setMessage("message", "无法检查本机环境，请重新安装应用后再试。", true);
+    $("status-pill").textContent = "浏览器预览";
+    setMessage("message", "浏览器预览未连接桌面运行环境。可先生成岗位方案；本机空间初始化与健康检查需在安装版中完成。", true);
   }
 }
 
@@ -396,10 +490,14 @@ async function addFiles() {
 function showActivation(result) {
   const data = result.data;
   currentWorkItemId = data.workitem_id;
-  pendingRoleId = data.required_role_id;
-  const role = (data.roles || []).find((candidate) => candidate.id === pendingRoleId);
-  $("suggested-role-name").textContent = role?.name || pendingRoleId;
-  $("suggested-role-reason").textContent = `${data.routing?.reason || "该角色最适合当前交付物。"} 激活后才会生成工作方案。`;
+  pendingRoleIds = data.missing_role_ids || (data.required_role_id ? [data.required_role_id] : []);
+  pendingRoleId = pendingRoleIds.length === 1 ? pendingRoleIds[0] : null;
+  const roles = (data.roles || []).filter((candidate) => pendingRoleIds.includes(candidate.id));
+  $("suggested-role-name").textContent = roles.length > 1
+    ? roles.map((role) => role.name).join(" → ")
+    : roles[0]?.name || data.required_role_id || "所需岗位";
+  $("suggested-role-reason").textContent = `${data.routing?.reason || "这些岗位共同负责当前交付物。"} 激活后生成工作方案。`;
+  $("activate-and-continue").textContent = roles.length > 1 ? "激活所需岗位并生成方案" : "激活角色并生成方案";
   $("activation-prompt").hidden = false;
   setMessage("work-message", "已识别需求。请确认激活建议角色，再生成工作方案。", false);
   renderRoles(data.roles || []);
@@ -412,23 +510,34 @@ function showResult(data) {
   currentIsGeneratedDraft = Boolean(data.platform_package);
   currentIsKernelResult = false;
   currentDeliverable = data.routing?.deliverable_type || null;
+  renderBlueprint({ reveal: Boolean(data.platform_package) });
   approvedPackage = data.review_state === "APPROVED";
+  const selectedRoleIds = data.routing?.selected_roles || [];
+  const selectedRoleNames = (data.roles || [])
+    .filter((role) => selectedRoleIds.includes(role.id))
+    .map((role) => role.name);
   pendingRoleId = null;
+  pendingRoleIds = [];
   $("activation-prompt").hidden = true;
   $("result-card").hidden = false;
   $("result-title").textContent = data.platform_package
     ? `${data.channel || "媒体"}发布包 · v${data.version}`
-    : data.routing?.deliverable_type === "video-script" ? "短视频工作方案" : "工作方案";
+    : data.routing?.deliverable_type === "software-feature-package" ? "软件开发工作方案"
+      : data.routing?.deliverable_type === "video-script" ? "短视频工作方案" : "工作方案";
   $("result-state").textContent = data.platform_package
     ? approvedPackage ? "已确认 · 可手动发布" : "待人工审核"
     : "已规划 · 尚未执行";
+  const canGenerate = currentPack === "engineering" ? false
+    : currentPack === "media"
+      ? Boolean(kernelTasks[data.routing?.deliverable_type] || data.routing?.deliverable_type === "platform-package")
+      : Boolean(kernelTasks[data.routing?.deliverable_type]);
   $("result-summary").textContent = data.platform_package
     ? approvedPackage
       ? `工作单 ${data.workitem_id} · 版本已确认，可手动发布；Sayelf 未连接平台账号。`
       : `工作单 ${data.workitem_id} · 三个媒体岗位已完成草稿、视觉方案和平台发布检查；发布包尚未确认，也未发布。`
-    : `工作单 ${data.workitem_id} · 建议角色：${data.routing?.role_name || "未指定"}。方案已保存到本机成果目录，可继续生成内容并导出。`;
+    : `工作单 ${data.workitem_id} · 最少岗位 ${data.routing?.role_count || (selectedRoleNames.length || 1)} 个${selectedRoleNames.length ? `：${selectedRoleNames.join(" → ")}` : `：${data.routing?.role_name || "未指定"}`}。交付要求：${(data.routing?.requested_deliverables || [data.routing?.deliverable_type]).filter(Boolean).join("、")}。${canGenerate ? "方案已保存到本机成果目录，可继续生成已接入的岗位成果。" : "方案已保存到本机成果目录；该交付目前仅支持工作流规划，尚无对应岗位执行器，未生成虚假成果。"}`;
   $("result-content").value = data.result_content || "";
-  $("execution-panel").hidden = currentIsGeneratedDraft;
+  $("execution-panel").hidden = currentIsGeneratedDraft || !canGenerate;
   $("approve-publish-package").hidden = !currentIsGeneratedDraft;
   $("approve-publish-package").textContent = approvedPackage ? "已确认，发布包已生成" : "确认成果并生成发布包";
   $("approve-publish-package").disabled = approvedPackage;
@@ -493,14 +602,22 @@ async function runMediaWorkflow() {
 function showKernelResult(data) {
   currentWorkItemId = data.workitem_id;
   currentIsKernelResult = true;
+  renderBlueprint({ reveal: true });
   currentIsGeneratedDraft = false;
   approvedPackage = false;
   $("result-card").hidden = false;
   $("result-title").textContent = data.label || "成果";
   $("result-state").textContent = "已通过自检与独立审核";
   const rework = data.rework_count ? `，经 ${data.rework_count} 轮返工` : "";
-  $("result-summary").textContent =
-    `工作单 ${data.workitem_id} · 由产出岗位生成并自检，再由独立审核岗位检查${rework}。发布前请人工核对事实与平台规范。`;
+  const completedRoleIds = [...new Set((data.events || [])
+    .filter((event) => event.event === "step-completed")
+    .map((event) => event.role))];
+  const completedRoleNames = (data.roles || [])
+    .filter((role) => completedRoleIds.includes(role.id))
+    .map((role) => role.name);
+  $("result-summary").textContent = data.deliverable_type === "software-feature-package"
+    ? `工作单 ${data.workitem_id} · 使用最少岗位：${completedRoleNames.join(" → ")}。成果经独立审核${rework}；测试尚未执行，文件尚未写入项目。`
+    : `工作单 ${data.workitem_id} · 由产出岗位生成并自检，再由独立审核岗位检查${rework}。发布前请人工核对事实与平台规范。`;
   $("result-content").value = data.result_content || "";
   $("execution-panel").hidden = true;
   $("approve-publish-package").hidden = true;
@@ -542,6 +659,7 @@ async function buildPlan(workitemId = currentWorkItemId) {
   const button = $("activate-and-continue");
   button.disabled = true;
   button.textContent = "正在生成方案…";
+  pendingRoleIds = [];
   try {
     const result = await invoke("build_workplan", { workitemId });
     if (result.code === 0) showResult(result.data);
@@ -569,53 +687,46 @@ async function setRoleActive(roleId, active) {
   }
 }
 
-$("industry-recommendation-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const industry = $("industry-input").value;
-  const result = recommendIndustryRoles(industry, currentPack, currentRoles);
-  recommendedRoleIds = new Set(result.roles.map((role) => role.id));
-  renderRoles(currentRoles);
-
-  if (result.status === "recommended") {
-    setMessage("industry-message", `“${industry.trim()}”匹配到${result.pack.name}，本机已有 ${result.roles.length} 个岗位建议。按需激活后才会接收工作。`);
-  } else if (result.status === "pack-mismatch") {
-    setMessage("industry-message", `“${industry.trim()}”匹配到${result.pack.name}，但当前工作空间使用“${packLabels[currentPack] || currentPack}”行业包。请在首次设置时选择对应行业包；不会跨包借用角色。`, true);
-  } else if (result.status === "ambiguous") {
-    setMessage("industry-message", `描述同时匹配到${result.packs.map((pack) => pack.name).join("、")}，请补充更具体的行业名称。`, true);
-  } else if (result.status === "unknown") {
-    setMessage("industry-message", "暂未匹配到已注册的行业岗位。可试试“自媒体公司”“MCN”或“工程项目”。", true);
-  } else if (result.status === "empty") {
-    setMessage("industry-message", "该行业包当前没有可推荐的已注册岗位，请重新检查本机环境。", true);
-  } else {
-    setMessage("industry-message", "请输入不超过 120 个字符的行业名称。", true);
-  }
-});
-
 $("choose-location").addEventListener("click", async () => {
   try {
     const folder = await invoke("choose_data_directory");
-    if (folder) { selectedPath = folder; $("data-location").textContent = folder; }
+    if (folder) {
+      selectedPath = folder;
+      $("data-location").textContent = folder;
+      await inspect();
+    }
   } catch {
     setMessage("message", "无法打开文件夹选择窗口。", true);
   }
 });
 
 $("initialize").addEventListener("click", async () => {
-  if (ready) { await inspect(); return; }
+  if (ready) { renderBlueprint(); return; }
+  if (!$("industry-input").value.trim()) {
+    setMessage("message", "请先填写行业与业务内容，再创建工作空间并生成岗位。", true);
+    $("industry-input").focus();
+    return;
+  }
+  if (!renderBlueprint({ reveal: false })) return;
   const button = $("initialize");
   button.disabled = true;
-  button.textContent = "正在准备…";
+  button.textContent = "正在准备并生成岗位…";
   try {
     const result = await invoke("initialize_workspace", { pack: $("pack").value, dataDir: selectedPath });
-    if (result.code === 0) render(result.data);
+    if (result.code === 0) {
+      render(result.data);
+      renderBlueprint({ reveal: false });
+    }
     else needsSetup(result);
   } catch {
-    setMessage("message", "设置没有完成。请检查所选文件夹权限，再重试。", true);
+    setMessage("message", "岗位方案已生成；浏览器预览未连接桌面工作空间。本机初始化需在安装版中完成。", true);
   } finally {
     button.disabled = false;
-    if (!ready) button.textContent = "重试设置";
+    if (!ready) button.textContent = "创建工作空间并生成岗位";
   }
 });
+
+restoreWorkforceProfile();
 
 $("recheck").addEventListener("click", inspect);
 $("refresh-recent-workflows").addEventListener("click", () => void refreshRecentWorkflows());
@@ -626,6 +737,7 @@ $("request-form").addEventListener("submit", async (event) => {
   $("activation-prompt").hidden = true;
   $("result-card").hidden = true;
   pendingRoleId = null;
+  pendingRoleIds = [];
   const button = $("create-workitem");
   button.disabled = true;
   button.textContent = "正在识别并规划…";
@@ -659,7 +771,12 @@ $("request-form").addEventListener("submit", async (event) => {
 });
 
 $("activate-and-continue").addEventListener("click", async () => {
-  if (pendingRoleId) await setRoleActive(pendingRoleId, true);
+  if (pendingRoleIds.length > 1) {
+    const roleIds = [...pendingRoleIds];
+    let allActivated = true;
+    for (const roleId of roleIds) allActivated = (await setRoleActive(roleId, true)) && allActivated;
+    if (allActivated) await buildPlan();
+  } else if (pendingRoleId) await setRoleActive(pendingRoleId, true);
 });
 
 $("activate-media-team").addEventListener("click", async () => {

@@ -1,25 +1,46 @@
 from __future__ import annotations
 
 from .models import ExecutionPlan, PlanStep, RoutingDecision, WorkItem
+from .registry import Registry
 
 
 class MinimumPlanner:
+    def __init__(self, registry: Registry | None = None):
+        self.registry = registry
+
     def build(self, workitem: WorkItem, decision: RoutingDecision) -> ExecutionPlan:
+        role_skills = decision.workflow_steps or tuple(
+            (decision.selected_role, skill_id) for skill_id in decision.selected_skills
+        )
         steps = tuple(
             PlanStep(
                 step=index,
-                role=decision.selected_role,
+                role=role,
                 skill=skill_id,
-                output=skill_id.split(".")[-1],
-                done_when="required-output-present",
+                output=self._output_for(decision, skill_id),
+                done_when=self._acceptance_for(skill_id),
             )
-            for index, skill_id in enumerate(decision.selected_skills, start=1)
+            for index, (role, skill_id) in enumerate(role_skills, start=1)
         )
         return ExecutionPlan(
             id=f"PLAN-{workitem.id}",
             workitem_id=workitem.id,
             steps=steps,
         )
+
+    def _output_for(self, decision: RoutingDecision, skill_id: str) -> str:
+        if self.registry and skill_id in self.registry.skills:
+            outputs = self.registry.skills[skill_id].produced_outputs
+            if outputs:
+                return outputs[0]
+        return skill_id.split(".")[-1]
+
+    def _acceptance_for(self, skill_id: str) -> str:
+        if self.registry and skill_id in self.registry.skills:
+            checks = self.registry.skills[skill_id].validation
+            if checks:
+                return " & ".join(checks)
+        return "required-output-present"
 
 
 def apply_routing(

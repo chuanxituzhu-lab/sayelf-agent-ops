@@ -97,6 +97,16 @@ class Registry:
                 raise ValueError(f"UNKNOWN_FOLLOWUP_ROLE:{rule.id}:{rule.followup_role}")
             if rule.followup_role and roles[rule.followup_role].industry != rule.followup_industry:
                 raise ValueError(f"FOLLOWUP_INDUSTRY_MISMATCH:{rule.id}")
+            if rule.workflow_steps:
+                if rule.role != rule.workflow_steps[0][0]:
+                    raise ValueError(f"WORKFLOW_START_ROLE_MISMATCH:{rule.id}")
+                for role_id, skill_id in rule.workflow_steps:
+                    if role_id not in roles or roles[role_id].industry != rule.industry:
+                        raise ValueError(f"UNKNOWN_WORKFLOW_ROLE:{rule.id}:{role_id}")
+                    if skill_id not in skills or skills[skill_id].owner_scope != role_id:
+                        raise ValueError(f"WORKFLOW_SKILL_OWNER_MISMATCH:{rule.id}:{skill_id}")
+                    if skill_id not in roles[role_id].allowed_skills:
+                        raise ValueError(f"WORKFLOW_SKILL_NOT_ALLOWED:{rule.id}:{skill_id}")
 
 
 # Industry packs are imported only when a registry asks for them, so an
@@ -104,6 +114,7 @@ class Registry:
 PACK_MODULES: dict[str, str] = {
     "media": "sayelf_agent_ops.packs.media",
     "engineering": "sayelf_agent_ops.packs.engineering",
+    "software": "sayelf_agent_ops.packs.software",
 }
 
 

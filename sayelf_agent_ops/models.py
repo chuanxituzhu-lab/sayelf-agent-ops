@@ -66,6 +66,10 @@ class RoutingDecision:
     confidence: str = "high"
     followup_industry: str | None = None
     followup_role: str | None = None
+    # Ordered role/skill handoffs. Empty means one role owns all selected skills.
+    workflow_steps: tuple[tuple[str, str], ...] = ()
+    # All explicitly requested final deliverables for a compound task.
+    requested_deliverables: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

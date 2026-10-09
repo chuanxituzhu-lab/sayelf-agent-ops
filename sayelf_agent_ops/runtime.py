@@ -50,7 +50,7 @@ class Runtime:
         self.project = project
         self.registry = registry or build_default_registry()
         self.router = Router(self.registry)
-        self.planner = MinimumPlanner()
+        self.planner = MinimumPlanner(self.registry)
         self.state = StateEngine()
         self.executor = executor or BuiltinExecutor(registry=self.registry)
         self.reviewer = reviewer or RuleReviewer()
@@ -139,14 +139,25 @@ class Runtime:
             # before it in this round (e.g. a script follows the outline).
             outputs = []
             wi.outputs = outputs
+            active_actor = wi.assignee
             try:
                 for step in wi.execution_plan.steps:
-                    outputs.append(self.executor.run(step, wi, feedback))
+                    actor = self.project.agent_for_role(step.role)
+                    active_actor = actor.id
+                    self._log(wi, actor.id, "step-started", step=step.step,
+                              role=step.role, skill=step.skill)
+                    output = self.executor.run(step, wi, feedback)
+                    output.setdefault("role", step.role)
+                    outputs.append(output)
+                    self._log(wi, actor.id, "step-completed", step=step.step,
+                              role=step.role, skill=step.skill,
+                              output_type=output.get("type"),
+                              placeholder=output.get("placeholder", False))
             except SkillExecutionError as error:
                 # 技能执行失败（如未授权调用远程模型、模型不可用）：停在 WORKING 交给人，
                 # 不产出、不重试、不把输入写进日志。
                 self._feedback[wi.id] = feedback
-                self._log(wi, wi.assignee, "executor-failed", code=error.code)
+                self._log(wi, active_actor, "executor-failed", code=error.code)
                 self._log(wi, SYSTEM_RUNTIME, "escalated", reason=error.code)
                 return wi
             wi.outputs = outputs
@@ -206,7 +217,9 @@ class Runtime:
         self._log(wi, SYSTEM_ROUTER, "route", role=decision.selected_role,
                   skills=list(decision.selected_skills), excluded=list(decision.excluded_roles),
                   assignee=producer.id, reviewer=reviewer.id, reason=decision.reason,
-                  followup_role=decision.followup_role)
+                  followup_role=decision.followup_role,
+                  workflow_steps=[{"role": role, "skill": skill}
+                                  for role, skill in decision.workflow_steps])
         self._move(wi, SYSTEM_ROUTER, WorkState.WORKING)
 
     # ------------------------------------------------------------------ decide

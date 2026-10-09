@@ -17,11 +17,16 @@
 
       <section class="card" aria-labelledby="setup-title">
         <div class="heading"><div><p class="eyebrow">首次设置</p><h2 id="setup-title">准备你的工作空间</h2></div><span id="status-pill" class="pill">检查中</span></div>
-        <p class="intro">选择一个行业包，Sayelf 会在本机准备好工作空间并检查运行状态。</p>
-        <label for="pack">行业包</label>
-        <select id="pack"><option value="media">内容与媒体</option><option value="engineering">工程与项目</option></select>
+        <p class="intro">写下你的行业和业务内容。Sayelf 会先在本机生成最少岗位的工作流程；下面的行业包只是已接入能力的示范。</p>
+        <label for="industry-input">行业与业务内容</label>
+        <textarea id="industry-input" maxlength="1200" rows="3" placeholder="例如：我们是一家餐饮连锁公司，经营多家门店，负责新品推广和门店运营。" required></textarea>
+        <label for="work-description">典型工作需求 <span class="subtle">（选填）</span></label>
+        <textarea id="work-description" maxlength="1200" rows="3" placeholder="例如：调研新品卖点，制作小红书和视频号内容，并检查事实与平台规范。"></textarea>
+        <label for="pack">已接入能力示范包</label>
+        <select id="pack"><option value="media">内容与媒体</option><option value="engineering">工程与项目</option><option value="software">软件开发</option></select>
+        <p class="subtle">示范包只展示已接入的执行能力，不要求与你的行业一致；通用岗位方案由上方业务描述生成。</p>
         <div class="location"><div><label>数据保存位置</label><p id="data-location">使用本机默认位置</p></div><button id="choose-location" class="secondary">更改位置</button></div>
-        <button id="initialize" class="primary">开始设置</button>
+        <button id="initialize" class="primary">创建工作空间并生成岗位</button>
         <p id="message" class="message" role="status" aria-live="polite">正在检查本机环境…</p>
       </section>
 
@@ -32,15 +37,9 @@
       </section>
 
       <section id="role-management-card" class="card" aria-labelledby="role-management-title" hidden>
-        <div class="heading"><div><p class="eyebrow">岗位注册表</p><h2 id="role-management-title">行业岗位推荐与激活</h2></div></div>
-        <p id="role-recommendation-note" class="intro">输入行业，查看当前行业包中已注册的 Agent 岗位。</p>
-        <form id="industry-recommendation-form" class="industry-recommender">
-          <label for="industry-input">你的行业</label>
-          <div class="industry-input-row"><input id="industry-input" maxlength="120" placeholder="例如：自媒体公司、MCN、工程项目" required /><button id="recommend-industry" class="secondary" type="submit">推荐岗位</button></div>
-          <p class="subtle">只从本机已注册岗位中推荐；不会自动激活或新建角色，行业名称只在本机匹配。</p>
-          <p id="industry-message" class="message" role="status" aria-live="polite"></p>
-        </form>
-        <div class="role-heading role-management-heading"><label>当前行业包岗位</label><button id="activate-media-team" class="secondary" type="button">启用完整内容流程</button></div>
+        <div class="heading"><div><p class="eyebrow">已接入能力</p><h2 id="role-management-title">示范行业岗位</h2></div></div>
+        <p id="role-recommendation-note" class="intro">这些是当前示范包里已登记、可单独激活的岗位；通用岗位方案不会冒充已接入能力。</p>
+        <div class="role-heading role-management-heading"><label>当前示范包岗位</label><button id="activate-media-team" class="secondary" type="button">启用工作流岗位</button></div>
         <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
       </section>
 
@@ -53,7 +52,7 @@
 
       <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
         <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
-        <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>
+        <p id="workbench-intro" class="intro">写下专业工作内容，添加文字、PDF 或照片。Sayelf 会识别交付要求，只组合必需的已注册岗位，按成果依赖安排顺序，并保留独立审核；当前不会理解照片场景或物体，请在文字中说明画面内容。</p>
 
         <details class="provider-settings">
           <summary>AI 服务设置 <span id="provider-status" class="subtle">尚未配置</span></summary>
@@ -73,19 +72,22 @@
         </details>
 
         <form id="request-form">
-          <label for="channel">发布平台</label>
-          <select id="channel" required>
-            <option value="小红书">小红书</option>
-            <option value="公众号">公众号</option>
-            <option value="视频号">视频号</option>
-            <option value="抖音">抖音</option>
-            <option value="通用媒体内容">通用媒体内容</option>
-          </select>
+          <div id="channel-field">
+            <label for="channel">发布平台</label>
+            <select id="channel" required>
+              <option value="小红书">小红书</option>
+              <option value="公众号">公众号</option>
+              <option value="视频号">视频号</option>
+              <option value="抖音">抖音</option>
+              <option value="通用媒体内容">通用媒体内容</option>
+              <option value="软件开发">软件开发</option>
+            </select>
+          </div>
 
           <label for="request">你准备做什么？</label>
-          <textarea id="request" rows="5" maxlength="20000" required placeholder="例如：根据这些照片和产品资料，写一篇小红书新品体验笔记，包含标题、正文和话题标签。"></textarea>
+          <textarea id="request" rows="5" maxlength="20000" required placeholder="例如：比较两版 BOQ 和施工图差异；或根据产品资料写小红书笔记并生成配图方案。系统会按实际交付需要匹配最少岗位。"></textarea>
 
-          <div class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个不超过 15 MiB，最多 5 个。图片只做文字识别，画面语义需写在需求中。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
+          <div id="attachment-controls" class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个不超过 15 MiB，最多 5 个。图片只做文字识别，画面语义需写在需求中。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
           <ul id="attachment-list" class="attachment-list"><li class="subtle empty-attachments">还没有添加材料</li></ul>
 
           <button id="create-workitem" class="primary" type="submit">识别需求并生成工作方案</button>
@@ -101,9 +103,15 @@
       <section id="result-card" class="card result-card" aria-labelledby="result-title" hidden>
         <div class="heading"><div><p class="eyebrow">工作成果出口</p><h2 id="result-title">工作方案</h2></div><span id="result-state" class="pill">已规划</span></div>
         <p id="result-summary" class="intro"></p>
+        <section id="blueprint-card" class="blueprint-card" aria-labelledby="blueprint-title" hidden>
+          <div class="heading"><div><p class="eyebrow">通用 Agent Ops</p><h3 id="blueprint-title">最少岗位工作闭环</h3></div><span id="blueprint-state" class="pill">待确认</span></div>
+          <p id="blueprint-summary" class="subtle"></p>
+          <div id="blueprint-roles" class="blueprint-roles"></div>
+          <p id="blueprint-note" class="note"></p>
+        </section>
         <div id="execution-panel" class="execution-panel" hidden>
           <p id="provider-target" class="subtle"></p>
-          <label class="consent-row"><input id="provider-consent" type="checkbox" /> 我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。</label>
+          <label class="consent-row"><input id="provider-consent" type="checkbox" /> <span id="consent-text">我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。</span></label>
           <div class="result-actions">
             <button id="run-kernel-task" class="primary" type="button" hidden>生成标题</button>
             <button id="run-media-workflow" class="primary" type="button">生成内容与平台发布包</button>

@@ -116,7 +116,7 @@ def _raw_metadata(connection):
         raise BootstrapError("SCHEMA_UNSUPPORTED") from None
     if schema < 1 or schema > SCHEMA:
         raise BootstrapError("SCHEMA_UNSUPPORTED")
-    if metadata.get("pack") not in ("media", "engineering") or metadata.get("mode") != "personal":
+    if metadata.get("pack") not in ("media", "engineering", "software") or metadata.get("mode") != "personal":
         raise BootstrapError("DATA_UNAVAILABLE")
     return metadata
 
@@ -306,7 +306,7 @@ def _role_details(registry, pack):
 
 
 def initialize(path=None, pack="media", mode="personal"):
-    if pack not in ("media", "engineering") or mode != "personal":
+    if pack not in ("media", "engineering", "software") or mode != "personal":
         raise BootstrapError("INVALID_INPUT")
     root = data_root(path)
     root.mkdir(parents=True, exist_ok=True)
@@ -511,12 +511,18 @@ def _load_workitem_request(root, request_file):
 
 def _routing_data(decision, registry):
     role = registry.roles[decision.selected_role]
+    selected_roles = tuple(dict.fromkeys(
+        role_id for role_id, _ in decision.workflow_steps
+    )) or (decision.selected_role,)
     return {
         "industry": decision.industry,
         "deliverable_type": decision.deliverable_type,
+        "requested_deliverables": list(decision.requested_deliverables or (decision.deliverable_type,)),
         "deliverable_level": decision.deliverable_level,
         "selected_role": decision.selected_role,
         "role_name": role.name,
+        "selected_roles": list(selected_roles),
+        "role_count": len(selected_roles),
         "responsibility": role.responsibility,
         "selected_skills": list(decision.selected_skills),
         "reason": decision.reason,
@@ -533,6 +539,8 @@ def _render_workplan(workitem_id, request, routing, steps):
         "- 当前状态：已规划（尚未执行）",
         f"- 目标平台：{channel}",
         f"- 交付类型：{routing['deliverable_type']}",
+        f"- 本次最少岗位数：{routing['role_count']}",
+        f"- 完整交付要求：{', '.join(routing['requested_deliverables'])}",
         "",
         "## 需求",
         "",
@@ -563,12 +571,14 @@ def _render_workplan(workitem_id, request, routing, steps):
         "",
     ])
     for step in steps:
-        lines.append(f"{step['step']}. **{step['skill']}**：产出 `{step['output']}`；完成条件：`{step['done_when']}`。")
+        lines.append(f"{step['step']}. **{step['role']} · {step['skill']}**：产出 `{step['output']}`；完成条件：`{step['done_when']}`。")
     lines.extend([
         "",
         "## 完成说明",
         "",
-        "这份文件是本机生成的路由与执行方案。当前版本没有连接 AI 内容执行器，也没有自动发布到平台；请人工审核后再使用。",
+        "每个步骤必须生成其声明的成果并通过技能契约校验；整单须覆盖以上全部交付要求，经独立审核后方可闭环。",
+        "",
+        "这份文件是本机生成的分工方案，状态为已规划，尚未执行。配置 AI 服务后可生成实际岗位成果；外部模型调用需逐次确认。",
         "",
     ])
     return "\n".join(lines)
@@ -608,19 +618,22 @@ def create_workplan(path, request_file):
         # 只加载本工作空间的行业包；不属于它、或交付物不明确的需求在此说明，不硬套岗位。
         raise BootstrapError("UNROUTABLE_DELIVERABLE") from None
     routing = _routing_data(decision, registry)
-    if decision.selected_role not in registry.active_role_ids:
+    execution_plan = MinimumPlanner(registry).build(wi, decision)
+    required_roles = tuple(dict.fromkeys(step.role for step in execution_plan.steps))
+    missing_roles = [role_id for role_id in required_roles if role_id not in registry.active_role_ids]
+    if missing_roles:
         return {
             "code": 11,
             "msg": MESSAGES["ROLE_NOT_ACTIVE"],
             "data": {
                 "reason": "ROLE_NOT_ACTIVE",
                 "workitem_id": workitem_id,
-                "required_role_id": decision.selected_role,
+                "required_role_id": missing_roles[0] if len(missing_roles) == 1 else None,
+                "missing_role_ids": missing_roles,
                 "routing": routing,
                 "roles": _role_details(registry, metadata["pack"]),
             },
         }
-    execution_plan = MinimumPlanner().build(wi, decision)
     apply_routing(wi, decision, execution_plan)
     steps = [
         {
@@ -665,7 +678,7 @@ def main(argv=None):
         "performance-review", "recent-workflows", "saved-media-result", "kernel-run",
     ))
     parser.add_argument("--data-dir")
-    parser.add_argument("--pack", choices=("media", "engineering"), default="media")
+    parser.add_argument("--pack", choices=("media", "engineering", "software"), default="media")
     parser.add_argument("--mode", choices=("personal",), default="personal")
     parser.add_argument("--role-id")
     parser.add_argument("--active", choices=("true", "false"))

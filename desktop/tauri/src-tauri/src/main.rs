@@ -138,7 +138,7 @@ async fn initialize_workspace(
     pack: String,
     data_dir: Option<String>,
 ) -> Result<Value, String> {
-    if !["media", "engineering"].contains(&pack.as_str()) {
+    if !["media", "engineering", "software"].contains(&pack.as_str()) {
         return Err("invalid setup selection".into());
     }
     invoke_runtime(

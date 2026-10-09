@@ -19,6 +19,9 @@ class RouteRule:
     reason: str
     followup_industry: str | None = None
     followup_role: str | None = None
+    workflow_steps: tuple[tuple[str, str], ...] = ()
+    workflow_selector: Callable[[str], tuple[tuple[str, str], ...]] | None = None
+    composition_predicate: Callable[[str], bool] | None = None
 
 
 @dataclass(frozen=True)
