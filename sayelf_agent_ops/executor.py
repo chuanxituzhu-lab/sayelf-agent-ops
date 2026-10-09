@@ -63,6 +63,14 @@ def _space_mixed(s: str) -> str:
     return re.sub(r"([\u4e00-\u9fff])([A-Za-z0-9])", r"\1 \2", s)
 
 
+class SkillExecutionError(RuntimeError):
+    """A skill could not run. ``code`` is safe to show and log (no inputs, keys or paths)."""
+
+    def __init__(self, code: str):
+        self.code = code
+        super().__init__(code)
+
+
 class Executor(Protocol):
     def run(self, step: PlanStep, workitem: WorkItem, feedback: list[str]) -> dict[str, Any]: ...
 

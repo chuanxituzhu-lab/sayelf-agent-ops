@@ -22,6 +22,10 @@ class Registry:
     def loaded_skills(self) -> int:
         return 0
 
+    @property
+    def loaded_industries(self) -> tuple[str, ...]:
+        return tuple(pack.industry for pack in self.packs.values())
+
     def activate_role(self, role_id: str) -> None:
         if role_id not in self.roles:
             raise KeyError(f"UNKNOWN_ROLE:{role_id}")
@@ -95,13 +99,46 @@ class Registry:
                 raise ValueError(f"FOLLOWUP_INDUSTRY_MISMATCH:{rule.id}")
 
 
-def build_default_registry() -> Registry:
-    from .packs.engineering import build_pack as build_engineering_pack
-    from .packs.media import build_pack as build_media_pack
+# Industry packs are imported only when a registry asks for them, so an
+# unused industry's roles, skills and rules never enter memory or context.
+PACK_MODULES: dict[str, str] = {
+    "media": "sayelf_agent_ops.packs.media",
+    "engineering": "sayelf_agent_ops.packs.engineering",
+}
+
+
+def available_industries() -> tuple[str, ...]:
+    return tuple(PACK_MODULES)
+
+
+def build_registry(industries: tuple[str, ...] | list[str] | None = None) -> Registry:
+    """Build a registry with only the requested industry packs.
+
+    ``None`` loads every known pack (same as ``build_default_registry``).
+    Cross-industry workflow rules are added only when every industry they
+    connect is loaded.
+    """
+    import importlib
+
+    wanted = tuple(PACK_MODULES) if industries is None else tuple(dict.fromkeys(industries))
+    unknown = [name for name in wanted if name not in PACK_MODULES]
+    if unknown:
+        raise ValueError(f"UNKNOWN_PACK:{','.join(unknown)}")
+    registry = Registry()
+    for name in wanted:
+        registry.register_pack(importlib.import_module(PACK_MODULES[name]).build_pack())
+
     from .packs.workflows import cross_industry_rules
 
-    registry = Registry()
-    registry.register_pack(build_media_pack())
-    registry.register_pack(build_engineering_pack())
-    registry.register_rules(cross_industry_rules())
+    loaded = {pack.industry for pack in registry.packs.values()}
+    rules = tuple(
+        rule for rule in cross_industry_rules()
+        if rule.industry in loaded and (rule.followup_industry is None or rule.followup_industry in loaded)
+    )
+    if rules:
+        registry.register_rules(rules)
     return registry
+
+
+def build_default_registry() -> Registry:
+    return build_registry(None)

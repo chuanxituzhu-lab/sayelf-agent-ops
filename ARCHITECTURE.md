@@ -83,7 +83,8 @@ INBOX → SCOPED → WORKING → READY → REVIEW ─┬→ APPROVED → DELIVER
 | 01 | WorkItem、State Engine、Role/Skill Registry、交付物路由、最小计划器 | 完成（18 测试通过） |
 | 02 | 规则层：AcceptanceGate、按动作授权的 HumanGate、按需加载 SkillLoader（c2d7437） | 完成 |
 | 02b | 内核层：Actor / Project / Policy、扩展状态机、Executor 接口（1 条真实技能：标题生成）、独立 Review、事件日志；两道门与加载器接入 Runtime；桌面工作台与 SQLite 运行时（PR #1）并入；四条不变式全绿 | 完成 |
-| 03 | HumanGate 审批持久化到桌面 SQLite（统一 `approve_and_export`）、标题生成接入 LLM、第二条真实技能、Pack 级按需加载 | 下一步 |
+| 03 | HumanGate 审批持久化到桌面 SQLite，桌面发布包确认改走同一授权门；标题生成接入模型；行业包按需加载（见 docs/sprint-03.md） | 完成 |
+| 04 | 桌面“生成标题”入口、媒体三阶段工作流迁入内核 Runtime、第二条真实技能 | 下一步 |
 | 03+ | sayelf.app 公网入口（复用桌面前端，含登录鉴权） | 待定 |
 | 04+ | 记忆、Risk 分级、Connector Runtime、多人权限细化 | 待定 |
 

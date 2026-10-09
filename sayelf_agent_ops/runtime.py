@@ -17,8 +17,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .actors import Project
-from .executor import BuiltinExecutor, Executor
-from .gates import AcceptanceGate, ActionKind, ApprovalRequest, HumanGate
+from .executor import BuiltinExecutor, Executor, SkillExecutionError
+from .gates import AcceptanceGate, ActionKind, ApprovalRequest, ApprovalStore, HumanGate
 from .loader import SkillLoader, discover_capabilities
 from .models import WorkItem
 from .planner import MinimumPlanner, apply_routing
@@ -44,6 +44,7 @@ class Runtime:
         executor: Executor | None = None,
         reviewer: Any | None = None,
         loader: SkillLoader | None = None,
+        approval_store: ApprovalStore | None = None,
     ):
         self.project = project
         self.registry = registry or build_default_registry()
@@ -53,7 +54,9 @@ class Runtime:
         self.executor = executor or BuiltinExecutor(registry=self.registry)
         self.reviewer = reviewer or RuleReviewer()
         self.acceptance = AcceptanceGate(self.registry)
-        self.human_gate = HumanGate(self.acceptance, approver_policy=self._approver_policy)
+        self.human_gate = HumanGate(
+            self.acceptance, approver_policy=self._approver_policy, store=approval_store
+        )
         self.loader = loader or SkillLoader(self.registry, capabilities=discover_capabilities())
         self._pending: dict[str, dict[str, Any]] = {}
         self.items: dict[str, WorkItem] = {}
@@ -130,7 +133,15 @@ class Runtime:
     def _execute(self, wi: WorkItem) -> WorkItem:
         feedback = self._feedback.pop(wi.id, [])
         for attempt in range(1, MAX_ATTEMPTS_PER_RUN + 1):
-            outputs = [self.executor.run(step, wi, feedback) for step in wi.execution_plan.steps]
+            try:
+                outputs = [self.executor.run(step, wi, feedback) for step in wi.execution_plan.steps]
+            except SkillExecutionError as error:
+                # 技能执行失败（如未授权调用远程模型、模型不可用）：停在 WORKING 交给人，
+                # 不产出、不重试、不把输入写进日志。
+                self._feedback[wi.id] = feedback
+                self._log(wi, wi.assignee, "executor-failed", code=error.code)
+                self._log(wi, SYSTEM_RUNTIME, "escalated", reason=error.code)
+                return wi
             wi.outputs = outputs
             for out in outputs:
                 self._log(wi, wi.assignee, "output", skill=out.get("skill"), type=out.get("type"),

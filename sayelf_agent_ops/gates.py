@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 from .models import WorkItem
 from .registry import Registry
@@ -198,6 +199,50 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+class ApprovalStore(Protocol):
+    """Where HumanGate keeps requests and approvals.
+
+    The default keeps them in memory. A durable store (for example the desktop
+    SQLite store) makes approvals survive restarts; ``consume`` must be atomic
+    so one approval can never authorize two actions."""
+
+    def add_request(self, req: ApprovalRequest) -> None: ...
+    def get_request(self, request_id: str) -> ApprovalRequest | None: ...
+    def put_approval(self, approval: Approval) -> None: ...
+    def get_approval(self, request_id: str) -> Approval | None: ...
+    def consume(self, request_id: str, at: datetime) -> bool: ...
+    def deny(self, request_id: str, approver: str, at: datetime) -> None: ...
+
+
+class InMemoryApprovalStore:
+    def __init__(self) -> None:
+        self._requests: dict[str, ApprovalRequest] = {}
+        self._approvals: dict[str, Approval] = {}
+
+    def add_request(self, req: ApprovalRequest) -> None:
+        self._requests[req.id] = req
+
+    def get_request(self, request_id: str) -> ApprovalRequest | None:
+        return self._requests.get(request_id)
+
+    def put_approval(self, approval: Approval) -> None:
+        self._approvals[approval.request_id] = approval
+
+    def get_approval(self, request_id: str) -> Approval | None:
+        return self._approvals.get(request_id)
+
+    def consume(self, request_id: str, at: datetime) -> bool:
+        approval = self._approvals.get(request_id)
+        if approval is None or approval.consumed:
+            return False
+        approval.consumed = True
+        return True
+
+    def deny(self, request_id: str, approver: str, at: datetime) -> None:
+        self._requests.pop(request_id, None)
+        self._approvals.pop(request_id, None)
+
+
 class HumanGate:
     """Standalone use needs no org/permission config: any human identifier
     may approve, and identifiers starting with ``agent:`` are rejected.
@@ -205,22 +250,24 @@ class HumanGate:
     Inside ``Runtime`` the authoritative check is ``approver_policy``, bound to
     ``Project.can_decide`` (actor kind must be ``human`` and hold an approver
     role from ``Policy``). The ``agent:`` prefix check remains only as a
-    fallback for callers that use the gate without a Project."""
+    fallback for callers that use the gate without a Project.
+
+    ``store`` decides durability; request ids are globally unique so a durable
+    store never sees a reused id after a restart."""
 
     def __init__(
         self,
-        acceptance: AcceptanceGate,
+        acceptance: Any,
         ttl: timedelta = timedelta(minutes=30),
         clock: Callable[[], datetime] = _now,
         approver_policy: Callable[[str, ApprovalRequest], bool] | None = None,
+        store: ApprovalStore | None = None,
     ):
         self.acceptance = acceptance
         self.ttl = ttl
         self.clock = clock
         self.approver_policy = approver_policy
-        self._requests: dict[str, ApprovalRequest] = {}
-        self._approvals: dict[str, Approval] = {}
-        self._seq = 0
+        self.store: ApprovalStore = store if store is not None else InMemoryApprovalStore()
 
     # -- step 1: agent asks -------------------------------------------------
     def request(
@@ -237,9 +284,8 @@ class HumanGate:
             raise GateRejected("ACCEPTANCE_NOT_PASSED")
         if not target:
             raise GateRejected("TARGET_REQUIRED")
-        self._seq += 1
         req = ApprovalRequest(
-            id=f"AR-{workitem.id}-{self._seq:03d}",
+            id=f"AR-{workitem.id}-{uuid.uuid4().hex[:12]}",
             workitem_id=workitem.id,
             action=ActionKind(action),
             target=target,
@@ -247,7 +293,7 @@ class HumanGate:
             summary=summary,
             created_at=self.clock(),
         )
-        self._requests[req.id] = req
+        self.store.add_request(req)
         workitem.history.append({
             "event": "approval-requested",
             "request": req.id,
@@ -258,7 +304,7 @@ class HumanGate:
 
     # -- step 2: human decides ---------------------------------------------
     def approve(self, request_id: str, approver: str) -> Approval:
-        req = self._requests.get(request_id)
+        req = self.store.get_request(request_id)
         if req is None:
             raise GateRejected("UNKNOWN_REQUEST")
         if not approver or approver.startswith("agent:"):
@@ -267,6 +313,9 @@ class HumanGate:
             raise GateRejected(f"NON_AUTHORIZING_EVENT:{approver}")
         if self.approver_policy and not self.approver_policy(approver, req):
             raise GateRejected("APPROVER_NOT_ALLOWED")
+        existing = self.store.get_approval(request_id)
+        if existing is not None and existing.consumed:
+            raise GateRejected("ALREADY_CONSUMED")
         now = self.clock()
         approval = Approval(
             request_id=request_id,
@@ -274,12 +323,11 @@ class HumanGate:
             decided_at=now,
             expires_at=now + self.ttl,
         )
-        self._approvals[request_id] = approval
+        self.store.put_approval(approval)
         return approval
 
     def deny(self, request_id: str, approver: str, reason: str = "") -> None:
-        self._requests.pop(request_id, None)
-        self._approvals.pop(request_id, None)
+        self.store.deny(request_id, approver, self.clock())
 
     # -- step 3: executor redeems, exactly once ----------------------------
     def authorize(
@@ -290,8 +338,8 @@ class HumanGate:
         target: str,
         payload: Any,
     ) -> AuthorizationToken:
-        req = self._requests.get(request_id)
-        approval = self._approvals.get(request_id)
+        req = self.store.get_request(request_id)
+        approval = self.store.get_approval(request_id)
         if req is None or approval is None:
             raise GateRejected("NO_APPROVAL")
         if req.workitem_id != workitem.id:
@@ -308,6 +356,9 @@ class HumanGate:
             raise GateRejected("PAYLOAD_CHANGED")
         if self.acceptance.passed_report(workitem) is None:
             raise GateRejected("ACCEPTANCE_NOT_PASSED")
+        issued = self.clock()
+        if not self.store.consume(request_id, issued):
+            raise GateRejected("ALREADY_CONSUMED")
 
         approval.consumed = True
         token = AuthorizationToken(
@@ -317,7 +368,7 @@ class HumanGate:
             target=req.target,
             payload_digest=req.payload_digest,
             approver=approval.approver,
-            issued_at=self.clock(),
+            issued_at=issued,
         )
         workitem.history.append({
             "event": "action-authorized",

@@ -766,6 +766,24 @@ def load_saved_media_result(path, workitem_id, run_id):
     }
 
 
+def _authorize_package(root, workitem_id, version, digest):
+    from desktop.runtime.approvals import LOCAL_HUMAN, desktop_human_gate
+    from sayelf_agent_ops.gates import ActionKind, GateRejected
+    from sayelf_agent_ops.models import WorkItem
+
+    gate = desktop_human_gate(root)
+    payload = [{"type": "publish-package", "version": version, "content_sha256": digest}]
+    wi = WorkItem(id=workitem_id, input="approve-export", outputs=payload)
+    target = f"local-package:{workitem_id}:v{version}"
+    try:
+        request = gate.request(wi, ActionKind.PUBLISH, target, payload,
+                               summary="确认成果并生成本机发布包（手动发布）")
+        gate.approve(request.id, LOCAL_HUMAN)
+        return gate.authorize(wi, request.id, ActionKind.PUBLISH, target, payload)
+    except GateRejected:
+        raise WorkflowError("WORKFLOW_INVALID") from None
+
+
 def approve_and_export(path, workitem_id, content, version=None):
     workitem_id = bootstrap._validate_workitem_id(workitem_id)
     if not isinstance(content, str) or not content.strip() or len(content) > 1_000_000:
@@ -836,6 +854,12 @@ def approve_and_export(path, workitem_id, content, version=None):
         "publishing": "manual; no platform account was contacted",
     }
     if not package_path.exists():
+        # The click on "确认成果并生成发布包" is the local human's decision. It goes
+        # through the kernel HumanGate so this approval follows the same rules
+        # as every other human approval: bound to this exact version and
+        # content digest, single use, and stored durably in this workspace.
+        authorization = _authorize_package(root, workitem_id, version, digest)
+        manifest["authorization"] = authorization.request_id
         try:
             with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as archive:
                 archive.writestr("publish-package.md", content)
@@ -854,6 +878,7 @@ def approve_and_export(path, workitem_id, content, version=None):
                 )
                 _event(connection, run_id, "human-approved", "package-export", "APPROVED", {
                     "version": version, "content_sha256": digest, "actor": "local-user",
+                    "authorization": authorization.request_id,
                 })
             temporary.replace(package_path)
         finally:

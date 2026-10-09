@@ -73,16 +73,17 @@ class DesktopWorkbenchTests(unittest.TestCase):
 
         state = bootstrap.initialize(root, "media")
 
-        self.assertEqual(3, state["schema"])
+        self.assertEqual(4, state["schema"])
         self.assertEqual(0, state["active_roles"])
         self.assertEqual(1, len(list((root / "backups").glob("runtime-schema-1-*.sqlite3"))))
         self.assertEqual(1, len(list((root / "backups").glob("runtime-schema-2-*.sqlite3"))))
+        self.assertEqual(1, len(list((root / "backups").glob("runtime-schema-3-*.sqlite3"))))
         connection = sqlite3.connect(database)
         try:
             self.assertEqual(("existing",), connection.execute(
                 "SELECT value FROM saved_state WHERE id='keep'"
             ).fetchone())
-            self.assertEqual("3", connection.execute(
+            self.assertEqual("4", connection.execute(
                 "SELECT value FROM metadata WHERE key='schema'"
             ).fetchone()[0])
         finally:

@@ -6,7 +6,7 @@ from .models import (
     ExecutionPlan,
     PlanStep,
 )
-from .registry import Registry, build_default_registry
+from .registry import Registry, build_default_registry, build_registry
 from .router import Router
 from .planner import MinimumPlanner, apply_routing
 from .state import StateEngine, WorkState, TransitionRejected
@@ -24,6 +24,7 @@ __all__ = [
     "PlanStep",
     "Registry",
     "build_default_registry",
+    "build_registry",
     "Router",
     "MinimumPlanner",
     "apply_routing",

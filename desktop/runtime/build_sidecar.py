@@ -30,6 +30,9 @@ def main():
         "--name", "sayelf-runtime", "--paths", str(ROOT),
         "--distpath", str(frozen), "--workpath", str(ROOT / "build/sidecar"),
         "--specpath", str(ROOT / "build"),
+        # Industry packs are imported lazily by name (registry.PACK_MODULES),
+        # which static analysis cannot see; bundle every kernel submodule.
+        "--collect-submodules", "sayelf_agent_ops",
         str(ROOT / "desktop/runtime/entrypoint.py"),
     ], cwd=ROOT, check=True)
     built = frozen / ("sayelf-runtime.exe" if sys.platform == "win32" else "sayelf-runtime")

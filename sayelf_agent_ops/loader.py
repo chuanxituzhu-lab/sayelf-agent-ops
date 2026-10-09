@@ -81,10 +81,15 @@ class SkillLoader:
         core: tuple[str, ...] = (),
         max_loaded: int = 4,
         commercial: bool = True,
+        pack_manifests: dict[str, SkillManifest] | None = None,
     ):
         self.registry = registry
         self.capabilities = frozenset(capabilities)
         self.manifests = manifests or {}
+        # One manifest per industry pack (e.g. a pack distilled from an
+        # external repo): its source/license applies to every skill in it
+        # unless that skill has its own manifest.
+        self.pack_manifests = pack_manifests or {}
         self.core = core
         self.max_loaded = max_loaded
         self.commercial = commercial
@@ -102,8 +107,29 @@ class SkillLoader:
     def is_loaded(self, skill_id: str) -> bool:
         return skill_id in self._loaded
 
+    def _industry_of(self, skill_id: str) -> str | None:
+        skill = self.registry.skills.get(skill_id)
+        role = self.registry.roles.get(skill.owner_scope) if skill else None
+        return role.industry if role else None
+
     def manifest(self, skill_id: str) -> SkillManifest:
-        return self.manifests.get(skill_id, SkillManifest(skill_id=skill_id))
+        if skill_id in self.manifests:
+            return self.manifests[skill_id]
+        pack = self.pack_manifests.get(self._industry_of(skill_id) or "")
+        if pack is not None:
+            return SkillManifest(skill_id=skill_id, source=pack.source,
+                                 license=pack.license, commercial_use=pack.commercial_use)
+        return SkillManifest(skill_id=skill_id)
+
+    @property
+    def loaded_packs(self) -> tuple[str, ...]:
+        """Industries that currently have at least one skill in context."""
+        found = []
+        for skill_id in self._loaded:
+            industry = self._industry_of(skill_id)
+            if industry and industry not in found:
+                found.append(industry)
+        return tuple(found)
 
     def _check(self, skill_id: str) -> str | None:
         skill = self.registry.skills.get(skill_id)

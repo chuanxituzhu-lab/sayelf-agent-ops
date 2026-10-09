@@ -15,13 +15,13 @@ from urllib.parse import urlsplit
 from sayelf_agent_ops.demo import run_first_vertical_slice
 from sayelf_agent_ops.models import WorkItem
 from sayelf_agent_ops.planner import MinimumPlanner, apply_routing
-from sayelf_agent_ops.registry import build_default_registry
+from sayelf_agent_ops.registry import build_registry
 from sayelf_agent_ops.router import Router
 from sayelf_agent_ops.state import StateEngine, WorkState
 
 APP_ID = "sayelf.agent-ops"
-SCHEMA = 3
-VERSION = "0.3.0"
+SCHEMA = 4
+VERSION = "0.4.0"
 DIRECTORIES = ("workitems", "outputs", "evidence", "logs", "backups")
 MESSAGES = {
     "SETUP_REQUIRED": "请选择行业包，完成首次初始化。",
@@ -47,6 +47,8 @@ MESSAGES = {
     "MODEL_RESPONSE_INVALID": "模型返回内容未通过结构校验；请检查模型兼容性后重试。",
     "MODEL_RESPONSE_TOO_LARGE": "模型返回内容过大，已拒绝保存。",
     "MODEL_INPUT_TOO_LARGE": "本次材料过长，请减少附件或缩短需求后再试。",
+    "UNROUTABLE_DELIVERABLE": "这项需求不属于当前行业包，或没有说清要交付什么；请补充要交付的成果（如标题、文章、配图、发布稿）。",
+    "MODEL_CALL_FAILED": "模型调用失败；请检查服务配置后重试。",
 }
 
 
@@ -128,7 +130,7 @@ def _create_role_activation_table(connection, pack):
         )
     """)
     now = datetime.now(timezone.utc).isoformat()
-    registry = build_default_registry()
+    registry = build_registry((pack,))
     connection.executemany(
         "INSERT OR IGNORE INTO role_activation (role_id, pack, active, updated_at) VALUES (?, ?, 0, ?)",
         [(role.id, pack, now) for role in registry.roles.values() if role.industry == pack],
@@ -209,6 +211,28 @@ def _create_execution_tables(connection):
         connection.execute(statement)
 
 
+def _create_gate_tables(connection):
+    connection.execute(
+        """CREATE TABLE IF NOT EXISTS gate_approvals (
+            request_id TEXT PRIMARY KEY,
+            workitem_id TEXT NOT NULL,
+            action TEXT NOT NULL,
+            target TEXT NOT NULL,
+            payload_digest TEXT NOT NULL,
+            summary TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            approver TEXT,
+            decided_at TEXT,
+            expires_at TEXT,
+            consumed_at TEXT,
+            denied_at TEXT
+        )"""
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS gate_approvals_workitem ON gate_approvals(workitem_id, created_at)"
+    )
+
+
 def _backup_before_migration(connection, root, source_schema):
     folder = root / "backups"
     if not folder.is_dir() or folder.is_symlink():
@@ -244,6 +268,8 @@ def _ensure_current_schema(connection, root):
                 _create_role_activation_table(connection, metadata["pack"])
             elif schema == 2:
                 _create_execution_tables(connection)
+            elif schema == 3:
+                _create_gate_tables(connection)
             else:
                 raise BootstrapError("SCHEMA_UNSUPPORTED")
             schema += 1
@@ -259,6 +285,7 @@ def _ensure_current_schema(connection, root):
     required_tables = {
         "role_activation", "ai_provider", "workflow_runs", "workflow_events",
         "workflow_stages", "workflow_results", "workflow_approvals", "performance_reviews",
+        "gate_approvals",
     }
     if metadata.get("schema") != str(SCHEMA) or not required_tables.issubset(tables):
         raise BootstrapError("SCHEMA_UNSUPPORTED")
@@ -331,6 +358,7 @@ def initialize(path=None, pack="media", mode="personal"):
             ])
             _create_role_activation_table(connection, pack)
             _create_execution_tables(connection)
+            _create_gate_tables(connection)
     return health(root)
 
 
@@ -343,7 +371,9 @@ def health(path=None):
         provider_configured = _provider_configured(connection)
         if connection.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise BootstrapError("DATA_UNAVAILABLE")
-        registry = _activate_registered_roles(connection, build_default_registry(), metadata["pack"])
+        registry = _activate_registered_roles(
+            connection, build_registry((metadata["pack"],)), metadata["pack"]
+        )
         connection.execute("BEGIN IMMEDIATE")
         connection.execute("INSERT OR REPLACE INTO metadata VALUES ('health_probe', 'temporary')")
         connection.rollback()
@@ -430,7 +460,7 @@ def set_role_active(path, role_id, active):
         raise BootstrapError("INVALID_INPUT")
     status = health(path)
     root = data_root(status["data_dir"])
-    registry = build_default_registry()
+    registry = build_registry((status["pack"],))
     role = registry.roles.get(role_id)
     if role is None or role.industry != status["pack"]:
         raise BootstrapError("INVALID_INPUT")
@@ -581,8 +611,16 @@ def create_workplan(path, request_file):
     engine.transition(wi, WorkState.SCOPED)
     with _opened(root) as connection:
         metadata = _ensure_current_schema(connection, root)
-        registry = _activate_registered_roles(connection, build_default_registry(), metadata["pack"])
-    decision = Router(registry).route(wi)
+        registry = _activate_registered_roles(
+            connection, build_registry((metadata["pack"],)), metadata["pack"]
+        )
+    try:
+        decision = Router(registry).route(wi)
+    except ValueError as error:
+        if str(error) != "UNROUTABLE_DELIVERABLE":
+            raise
+        # 只加载本工作空间的行业包；不属于它、或交付物不明确的需求在此说明，不硬套岗位。
+        raise BootstrapError("UNROUTABLE_DELIVERABLE") from None
     routing = _routing_data(decision, registry)
     if decision.selected_role not in registry.active_role_ids:
         return {
@@ -638,7 +676,7 @@ def main(argv=None):
     parser.add_argument("action", choices=(
         "initialize", "health", "set-role", "plan", "provider-config",
         "provider-status", "provider-clear", "provider-test", "execute-media", "approve-export",
-        "performance-review", "recent-workflows", "saved-media-result",
+        "performance-review", "recent-workflows", "saved-media-result", "kernel-titles",
     ))
     parser.add_argument("--data-dir")
     parser.add_argument("--pack", choices=("media", "engineering"), default="media")
@@ -655,6 +693,7 @@ def main(argv=None):
     parser.add_argument("--resume-run-id")
     parser.add_argument("--run-id")
     parser.add_argument("--version", type=int)
+    parser.add_argument("--text")
     args = parser.parse_args(argv)
     try:
         if args.action == "initialize":
@@ -680,7 +719,7 @@ def main(argv=None):
             with _opened(root) as connection:
                 connection.execute("DELETE FROM ai_provider WHERE id=1")
             result = {"code": 0, "msg": "AI 服务配置已清除。", "data": {"configured": False}}
-        elif args.action in {"provider-test", "execute-media"}:
+        elif args.action in {"provider-test", "execute-media", "kernel-titles"}:
             from desktop.runtime.media_workflow import execute_media_workflow, test_provider
             from desktop.runtime.model_provider import OpenAICompatibleProvider
 
@@ -691,7 +730,11 @@ def main(argv=None):
             provider = OpenAICompatibleProvider(
                 config["endpoint"], config["model"], api_key, config["timeout_seconds"]
             )
-            if args.action == "provider-test":
+            if args.action == "kernel-titles":
+                from desktop.runtime.kernel_tasks import run_titles
+
+                result = run_titles(args.data_dir, args.text, provider, allow_external=args.allow_external)
+            elif args.action == "provider-test":
                 try:
                     data = test_provider(provider)
                     result = {"code": 0, "msg": data["message"], "data": data}
