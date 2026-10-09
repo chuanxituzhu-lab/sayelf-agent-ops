@@ -1,0 +1,20 @@
+{
+  "id": "P-BUILDCOSTIQ-DEMO",
+  "description": "BuildCostIQ 施工项目部示例：3 位人类成员 + 各专业 Agent。人员 id 为占位，接入真实团队时替换；本文件不含任何账号或密钥。",
+  "members": [
+    {"id": "human.pm", "name": "项目经理", "roles": ["owner", "project-manager"]},
+    {"id": "human.cost-lead", "name": "造价负责人", "roles": ["cost-lead"]},
+    {"id": "human.tech-lead", "name": "技术负责人", "roles": ["engineering.technical"]}
+  ],
+  "include_default_agents": true,
+  "policy": {
+    "gated_deliverables": {
+      "boq-diff": "cost-release",
+      "cost-analysis": "cost-release",
+      "professional-brief": "cost-release",
+      "platform-package": "publish"
+    },
+    "gate_approver_roles": {"publish": ["owner"]},
+    "gate_quorum": {"cost-release": ["cost-lead", "project-manager"]}
+  }
+}

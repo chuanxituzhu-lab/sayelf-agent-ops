@@ -64,6 +64,10 @@ class Runtime:
         self.items: dict[str, WorkItem] = {}
         self._events: dict[str, list[dict[str, Any]]] = {}
         self._feedback: dict[str, list[str]] = {}
+        # Team: plan steps owned by a human member wait for that person's output.
+        self._human_tasks: dict[str, dict[str, Any]] = {}
+        self._human_outputs: dict[tuple[str, int], dict[str, Any]] = {}
+        self._project_log: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------ events
     def _log(self, wi: WorkItem, actor: str, event: str, **data: Any) -> None:
@@ -75,7 +79,69 @@ class Runtime:
 
     def _approver_policy(self, approver: str, req: ApprovalRequest) -> bool:
         pending = self._pending.get(req.workitem_id)
-        return bool(pending) and self.project.can_decide(approver, pending["gate"])
+        if not pending:
+            return False
+        role = pending.get("quorum_by_request", {}).get(req.id)
+        return self.project.can_decide(approver, pending["gate"], role=role)
+
+    # ------------------------------------------------------------------ members (Team / Hybrid)
+    def _require_owner(self, by: str) -> None:
+        if not self.project.is_owner(by):
+            raise PermissionError(f"ONLY_OWNERS_MANAGE_MEMBERS:{by}")
+
+    def _log_project(self, actor: str, event: str, **data: Any) -> None:
+        self._project_log.append({"seq": len(self._project_log) + 1, "at": _now(),
+                                  "actor": actor, "event": event, **data})
+
+    def project_events(self) -> list[dict[str, Any]]:
+        return copy.deepcopy(self._project_log)
+
+    def add_member(self, actor, by: str):
+        self._require_owner(by)
+        self.project.add_member(actor)
+        self._log_project(by, "member-added", member=actor.id, kind=actor.kind, roles=list(actor.roles))
+        return actor
+
+    def remove_member(self, actor_id: str, by: str):
+        """成员退出：不再被分派、不能裁决；他手上等待中的人工步骤交回，下次运行重新分派。"""
+        self._require_owner(by)
+        removed = self.project.remove_member(actor_id)
+        self._log_project(by, "member-removed", member=actor_id)
+        for wi_id, task in list(self._human_tasks.items()):
+            if task["assignee"] == actor_id:
+                self._human_tasks.pop(wi_id)
+                self._log(self.items[wi_id], by, "assignee-removed", step=task["step"],
+                          role=task["role"], former_assignee=actor_id)
+        return removed
+
+    # ------------------------------------------------------------------ human-owned steps
+    def human_tasks(self, actor_id: str | None = None) -> list[dict[str, Any]]:
+        return [{"workitem_id": wi_id, **task} for wi_id, task in self._human_tasks.items()
+                if actor_id is None or task["assignee"] == actor_id]
+
+    def submit_human_output(self, wi: WorkItem, actor_id: str, content: Any) -> WorkItem:
+        task = self._human_tasks.get(wi.id)
+        if not task:
+            raise TransitionRejected("NO_HUMAN_TASK")
+        if task["assignee"] != actor_id:
+            raise PermissionError(f"NOT_ASSIGNEE:{actor_id}")
+        if not self.project.get(actor_id).active:
+            raise PermissionError(f"INACTIVE_MEMBER:{actor_id}")
+        if isinstance(content, str):
+            output: dict[str, Any] = {"content": content}
+        elif isinstance(content, dict):
+            output = dict(content)
+        else:
+            raise ValueError("HUMAN_OUTPUT_INVALID")
+        if not (str(output.get("content", "")).strip() or output.get("items")):
+            raise ValueError("EMPTY_HUMAN_OUTPUT")
+        output.update(type=task["output"], skill=task["skill"], role=task["role"], placeholder=False,
+                      evidence={"method": "human", "actor": actor_id})
+        self._human_outputs[(wi.id, task["step"])] = output
+        self._human_tasks.pop(wi.id)
+        self._log(wi, actor_id, "human-output-submitted", step=task["step"], role=task["role"],
+                  skill=task["skill"], output_type=task["output"])
+        return self.run(wi)
 
     def _move(self, wi: WorkItem, actor: str, target: WorkState) -> None:
         before = wi.state
@@ -120,6 +186,8 @@ class Runtime:
             self._move(wi, wi.assignee or SYSTEM_RUNTIME, WorkState.WORKING)
         elif wi.state != WorkState.WORKING:
             return wi
+        if wi.id in self._human_tasks:
+            return wi  # 等人工步骤的成员交付，不重复派单
 
         loaded = self.loader.load_for_plan(wi.execution_plan)
         if not loaded.ok:
@@ -142,8 +210,25 @@ class Runtime:
             active_actor = wi.assignee
             try:
                 for step in wi.execution_plan.steps:
-                    actor = self.project.agent_for_role(step.role)
+                    actor = self.project.assignee_for_role(step.role)
                     active_actor = actor.id
+                    if actor.kind == "human":
+                        key = (wi.id, step.step)
+                        if key not in self._human_outputs:
+                            self._human_tasks[wi.id] = {
+                                "step": step.step, "role": step.role, "skill": step.skill,
+                                "output": step.output, "assignee": actor.id, "feedback": list(feedback),
+                            }
+                            self._log(wi, SYSTEM_RUNTIME, "human-task-assigned", step=step.step,
+                                      role=step.role, skill=step.skill, assignee=actor.id)
+                            return wi
+                        self._log(wi, actor.id, "step-started", step=step.step,
+                                  role=step.role, skill=step.skill)
+                        output = dict(self._human_outputs[key])
+                        outputs.append(output)
+                        self._log(wi, actor.id, "step-completed", step=step.step, role=step.role,
+                                  skill=step.skill, output_type=output.get("type"), placeholder=False)
+                        continue
                     self._log(wi, actor.id, "step-started", step=step.step,
                               role=step.role, skill=step.skill)
                     output = self.executor.run(step, wi, feedback)
@@ -179,6 +264,9 @@ class Runtime:
             feedback = list(self_check.failures) + result.failures
             self._move(wi, wi.reviewer, WorkState.REWORK)
             self._log(wi, wi.reviewer, "rework-requested", feedback=feedback)
+            # 人工步骤的产出被打回：清掉，下一轮重新交给同一岗位的人，并带上审核意见。
+            for key in [k for k in self._human_outputs if k[0] == wi.id]:
+                del self._human_outputs[key]
             if attempt == MAX_ATTEMPTS_PER_RUN:
                 # 多轮返工仍未通过：停在 REWORK 交给人类，不无限循环。
                 self._feedback[wi.id] = feedback
@@ -187,6 +275,8 @@ class Runtime:
             self._move(wi, wi.assignee, WorkState.WORKING)
 
         gate = self.project.policy.gate_for(wi.deliverable_type)
+        if gate and self.project.policy.quorum_for(gate):
+            return self._request_quorum(wi, gate)
         if gate:
             action = ActionKind(gate) if gate in {a.value for a in ActionKind} else ActionKind.EXTERNAL_WRITE
             target = f"{wi.deliverable_type}@{self.project.id}"
@@ -206,11 +296,63 @@ class Runtime:
         self._log(wi, SYSTEM_RUNTIME, "delivered")
         return wi
 
+    def _request_quorum(self, wi: WorkItem, gate: str) -> WorkItem:
+        """多人裁决：规则里的每个角色各由一位不同的人批准一次，全部到齐才交付。"""
+        roles = self.project.policy.quorum_for(gate)
+        action = ActionKind(gate) if gate in {a.value for a in ActionKind} else ActionKind.EXTERNAL_WRITE
+        target = f"{wi.deliverable_type}@{self.project.id}"
+        wi.pending_gate = gate
+        wi.approver = "+".join(roles)
+        pending: dict[str, Any] = {"gate": gate, "action": action, "target": target,
+                                   "quorum": {}, "approved": {}, "tokens": {}}
+        self._pending[wi.id] = pending
+        for role in roles:
+            req = self.human_gate.request(wi, action, f"{target}#{role}", wi.outputs,
+                                          summary=f"{gate} ({role}): {wi.deliverable_type}")
+            pending["quorum"][role] = req.id
+        pending["quorum_by_request"] = {req_id: role for role, req_id in pending["quorum"].items()}
+        unstaffed = [r for r in roles if not self.project.holders(r)]
+        self._log(wi, SYSTEM_RUNTIME, "gate-requested", gate=gate, quorum=list(roles),
+                  requests=dict(pending["quorum"]), action=action.value, target=target,
+                  unstaffed_roles=unstaffed)
+        return wi
+
+    def _complete_quorum_role(self, wi: WorkItem, pending: dict[str, Any], role: str, actor_id: str) -> None:
+        if actor_id in pending["approved"].values():
+            raise PermissionError(f"ALREADY_APPROVED_BY_ACTOR:{actor_id}")
+        req_id = pending["quorum"][role]
+        token = self.human_gate.authorize(wi, req_id, pending["action"], f"{pending['target']}#{role}", wi.outputs)
+        pending["approved"][role] = actor_id
+        pending["tokens"][role] = token.request_id
+        self._log(wi, actor_id, "decision", gate=pending["gate"], approve=True, role=role, request=req_id)
+
+    def _deliver_if_quorum_complete(self, wi: WorkItem, pending: dict[str, Any], actor_id: str) -> WorkItem:
+        if len(pending["approved"]) < len(pending["quorum"]):
+            return wi
+        self._pending.pop(wi.id, None)
+        wi.pending_gate = None
+        self._move(wi, actor_id, WorkState.DELIVERED)
+        self._log(wi, actor_id, "delivered", authorizations=dict(pending["tokens"]),
+                  approvers=dict(pending["approved"]))
+        return wi
+
+    def _deny_quorum(self, wi: WorkItem, pending: dict[str, Any], actor_id: str, reason: str) -> WorkItem:
+        for role, req_id in pending["quorum"].items():
+            if role not in pending["approved"]:
+                self.human_gate.deny(req_id, actor_id, reason)
+        self._pending.pop(wi.id, None)
+        self._log(wi, actor_id, "decision", gate=pending["gate"], approve=False, reason=reason)
+        wi.pending_gate = None
+        wi.rework_count += 1
+        self._move(wi, actor_id, WorkState.REWORK)
+        self._feedback[wi.id] = [reason] if reason else []
+        return wi
+
     def _route(self, wi: WorkItem) -> None:
         decision = self.router.route(wi)
         plan = self.planner.build(wi, decision)
         apply_routing(wi, decision, plan)
-        producer = self.project.agent_for_role(decision.selected_role)
+        producer = self.project.assignee_for_role(decision.selected_role)
         reviewer = self.project.reviewer_for(decision.industry, producer.id)
         wi.assignee = producer.id
         wi.reviewer = reviewer.id
@@ -233,6 +375,8 @@ class Runtime:
         if wi.state != WorkState.APPROVED or not wi.pending_gate:
             raise TransitionRejected("NO_PENDING_GATE")
         pending = self._pending.get(wi.id)
+        if pending and "quorum" in pending:
+            return self._finalize_quorum(wi, pending)
         if not pending or "request" not in pending:
             raise TransitionRejected("NO_PENDING_REQUEST")
         store = self.human_gate.store
@@ -262,6 +406,25 @@ class Runtime:
                   payload_digest=token.payload_digest)
         return wi
 
+    def _finalize_quorum(self, wi: WorkItem, pending: dict[str, Any]) -> WorkItem:
+        store = self.human_gate.store
+        last = wi.approver or SYSTEM_RUNTIME
+        for role, req_id in pending["quorum"].items():
+            if role in pending["approved"]:
+                continue
+            if store.get_request(req_id) is None:
+                return self._deny_quorum(wi, pending, wi.approver or SYSTEM_RUNTIME, "denied-out-of-band")
+            approval = store.get_approval(req_id)
+            if approval is None:
+                continue
+            if not self.project.can_decide(approval.approver, pending["gate"], role=role):
+                raise PermissionError(f"NOT_ALLOWED_TO_DECIDE:{approval.approver}:{role}")
+            self._complete_quorum_role(wi, pending, role, approval.approver)
+            last = approval.approver
+        if len(pending["approved"]) < len(pending["quorum"]):
+            raise TransitionRejected("AWAITING_HUMAN_APPROVAL")
+        return self._deliver_if_quorum_complete(wi, pending, last)
+
     def decide(self, wi: WorkItem, actor_id: str, approve: bool, reason: str = "") -> WorkItem:
         if wi.state != WorkState.APPROVED or not wi.pending_gate:
             raise TransitionRejected("NO_PENDING_GATE")
@@ -270,6 +433,18 @@ class Runtime:
             raise PermissionError(f"NOT_ALLOWED_TO_DECIDE:{actor_id}:{gate}")
 
         pending = self._pending.get(wi.id)
+        if pending and "quorum" in pending:
+            if not approve:
+                return self._deny_quorum(wi, pending, actor_id, reason)
+            if actor_id in pending["approved"].values():
+                raise PermissionError(f"ALREADY_APPROVED_BY_ACTOR:{actor_id}")
+            role = next((r for r in pending["quorum"] if r not in pending["approved"]
+                         and self.project.can_decide(actor_id, gate, role=r)), None)
+            if role is None:
+                raise PermissionError(f"NOT_ALLOWED_TO_DECIDE:{actor_id}:{gate}")
+            self.human_gate.approve(pending["quorum"][role], actor_id)
+            self._complete_quorum_role(wi, pending, role, actor_id)
+            return self._deliver_if_quorum_complete(wi, pending, actor_id)
         if not pending or "request" not in pending:
             raise TransitionRejected("NO_PENDING_REQUEST")
 
