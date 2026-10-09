@@ -25,7 +25,6 @@ from sayelf_agent_ops.skills.video_llm import make_model_handlers
 KERNEL_DELIVERABLES = {
     "title-list": "标题候选",
     "video-script": "短视频脚本",
-    "software-feature-package": "软件功能成果包",
 }
 
 
@@ -39,38 +38,6 @@ def _routing_input(request):
 
 
 def _markdown(deliverable, outputs):
-    if deliverable == "software-feature-package":
-        sections = ["# 软件功能成果包", "", "> AI 生成的本地审阅材料；实现文件尚未写入仓库，测试尚未执行。", ""]
-        for output in outputs:
-            kind = output.get("type")
-            if kind == "software-design":
-                sections.extend([f"## 软件方案设计 · `{output['role']}`", "", output["summary"], "", "### 假设", ""])
-                sections.extend([f"- {item}" for item in output["assumptions"]] or ["- 无"])
-                sections.extend(["", "### 验收标准", ""])
-                sections.extend([f"- {item}" for item in output["acceptance_criteria"]])
-                sections.extend(["", "### 文件范围", ""])
-                sections.extend([f"- `{item['path']}`：{item['purpose']}" for item in output["files"]])
-            elif kind == "software-change":
-                sections.extend(["", f"## 软件开发成果 · `{output['role']}`", "", output["summary"], ""])
-                for item in output["files"]:
-                    candidate = item["path"].rsplit(".", 1)[-1] if "." in item["path"] else "text"
-                    suffix = candidate if candidate.isalnum() and len(candidate) <= 16 else "text"
-                    ticks = max((len(run) for run in re.findall(r"`+", item["content"])), default=2) + 1
-                    fence = "`" * max(3, ticks)
-                    sections.extend([f"### `{item['path']}`", "", f"{fence}{suffix}", item["content"], fence, ""])
-                if output["limitations"]:
-                    sections.extend(["### 已知限制", "", *[f"- {item}" for item in output["limitations"]], ""])
-                if output["apply_instructions"]:
-                    sections.extend(["### 应用说明", "", *[f"- {item}" for item in output["apply_instructions"]], ""])
-            elif kind == "software-test-report":
-                sections.extend(["", f"## QA 测试与审查 · `{output['role']}`", "", output["review_summary"], "",
-                                 f"验证状态：**{output['verification_state']}（未执行）**", ""])
-                for index, case in enumerate(output["test_cases"], 1):
-                    sections.extend([f"### {index}. {case['name']}", "",
-                                     *[f"{step_no}. {step}" for step_no, step in enumerate(case["steps"], 1)],
-                                     f"预期结果：{case['expected']}", ""])
-                sections.extend(["### 风险", "", *([f"- {item}" for item in output["risks"]] or ["- 未列出"]), ""])
-        return "\n".join(sections).rstrip() + "\n"
     if deliverable == "title-list":
         titles = next(o["items"] for o in outputs if o.get("type") == "title-list")
         body = "# 标题候选\n\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1))
@@ -84,7 +51,7 @@ def _markdown(deliverable, outputs):
 def run_kernel_task(path, workitem_id, provider, allow_external=False):
     workitem_id = bootstrap._validate_workitem_id(workitem_id)
     status = bootstrap.health(path)
-    if status["pack"] not in ("media", "software"):
+    if status["pack"] != "media":
         raise bootstrap.BootstrapError("WORKFLOW_INVALID")
     root = bootstrap.data_root(status["data_dir"])
     request = bootstrap._load_workitem_request(root, root / "workitems" / workitem_id / "request.json")

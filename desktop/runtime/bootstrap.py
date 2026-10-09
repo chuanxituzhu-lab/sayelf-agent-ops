@@ -116,7 +116,7 @@ def _raw_metadata(connection):
         raise BootstrapError("SCHEMA_UNSUPPORTED") from None
     if schema < 1 or schema > SCHEMA:
         raise BootstrapError("SCHEMA_UNSUPPORTED")
-    if metadata.get("pack") not in ("media", "engineering", "software") or metadata.get("mode") != "personal":
+    if metadata.get("pack") not in ("media", "engineering") or metadata.get("mode") != "personal":
         raise BootstrapError("DATA_UNAVAILABLE")
     return metadata
 
@@ -306,7 +306,7 @@ def _role_details(registry, pack):
 
 
 def initialize(path=None, pack="media", mode="personal"):
-    if pack not in ("media", "engineering", "software") or mode != "personal":
+    if pack not in ("media", "engineering") or mode != "personal":
         raise BootstrapError("INVALID_INPUT")
     root = data_root(path)
     root.mkdir(parents=True, exist_ok=True)
@@ -678,7 +678,7 @@ def main(argv=None):
         "performance-review", "recent-workflows", "saved-media-result", "kernel-run",
     ))
     parser.add_argument("--data-dir")
-    parser.add_argument("--pack", choices=("media", "engineering", "software"), default="media")
+    parser.add_argument("--pack", choices=("media", "engineering"), default="media")
     parser.add_argument("--mode", choices=("personal",), default="personal")
     parser.add_argument("--role-id")
     parser.add_argument("--active", choices=("true", "false"))

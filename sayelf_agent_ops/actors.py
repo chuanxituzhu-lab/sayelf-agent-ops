@@ -17,7 +17,6 @@ OWNER_ROLE = "owner"
 REVIEW_ROLES: dict[str, str] = {
     "media": "media.reviewer",
     "engineering": "engineering.reviewer",
-    "software": "software.reviewer",
 }
 
 

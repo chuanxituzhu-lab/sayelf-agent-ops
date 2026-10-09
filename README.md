@@ -10,7 +10,7 @@ Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗�
 
 > **最少岗位，专业闭环。**
 
-[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [软件工作流决策](docs/bdr-software-role-workflow.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md)
+[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md)
 
 ## 下载最新版本
 
@@ -39,16 +39,14 @@ Sayelf Agent Ops 面向一人公司和小团队，目标是让专业工作可以
 - **通用 Core：** WorkItem、确定性 Router、最小 Planner、Role / Skill Registry 和 State Engine。
 - **首个行业落地：** 自媒体公司工作流，Sprint 01 已纳入选题和内容策划岗位、技能及路由示例。
 - **行业边界：** 媒体与工程岗位、技能和路由规则已拆到可注册的 Pack 模块；通用 Router 读取 Registry 中的规则。Sprint 01 尚未实现从外部目录动态发现或加载 Pack；工程路由保留为基础样例。
-- **最少岗位闭环：** 用户输入工作内容后，系统从当前行业包已注册技能中匹配岗位；单一交付按依赖组合，明确的复合交付覆盖每项结果并去掉重复技能/岗位。简单软件改动使用开发 + 独立 QA；仅跨模块、系统设计等复杂工作增加方案设计岗。
-- **软件开发：** 软件工作空间按实际范围选择必要岗位；简单改动使用开发 + 独立 QA，跨模块设计才增加方案岗。实现文件以 Markdown 成果包保存在本机，供人审阅后另行应用；不会自动修改项目目录或执行生成代码，QA 报告明确标记测试尚未执行。
-- **软件工程路由：** 新增软件开发 Pack，支持将缺陷修复、前端、后端/API/MCP、测试与代码审查分派给软件岗位；复杂功能请求可生成设计、实现文件和 QA 测试计划。
+- **最少岗位闭环：** 用户输入工作内容后，系统从当前行业包已注册技能中匹配岗位；单一交付按依赖组合，明确的复合交付覆盖每项结果并去掉重复技能/岗位。
 - **本地优先：** 请求、附件、OCR、工作流状态和成果默认留在本机；应用不启动网络服务或发送遥测。只有用户配置模型并逐次同意后，文字才会发送至所选模型服务。
 
 ## 当前实现范围
 
 Sprint 01 已打通最小路由与规划路径：请求 → WorkItem → 路由 → 计划 → READY。媒体路由示例可将请求分配到 `media.content-planner`，并选择 `media.title-writing` 技能。
 
-桌面工作台提供专业工作需求入口：媒体、工程与软件工作空间可输入文字，媒体和工程还可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；图片只识别文字，不分析画面场景或物体。每项工作最多添加 5 个附件、单个不超过 15 MiB。提交后自动生成最少岗位方案；系统只要求激活本次工作需要的角色。工程包当前提供岗位分工方案，工程成果执行器尚未接入。
+桌面工作台提供专业工作需求入口：媒体与工程工作空间可输入文字，并可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；图片只识别文字，不分析画面场景或物体。每项工作最多添加 5 个附件、单个不超过 15 MiB。提交后自动生成最少岗位方案；系统只要求激活本次工作需要的角色。工程包当前提供岗位分工方案，工程成果执行器尚未接入。
 
 复合需求会合并已注册路由规则，并按技能输入/输出依赖排序。例如“为小红书写笔记并生成配图方案”会覆盖内容和视觉成果；“对比 BOQ 和施工图”会覆盖商务与技术成果。无法匹配的能力会提示补充或说明缺口，不会临时编造岗位。
 
@@ -97,7 +95,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-Python 自动评估集覆盖核心路由与状态、团队协作（人工步骤、多人裁决、成员进出）、软件岗位路由、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、审批持久化、模型标题与短视频脚本技能、行业包按需加载、MCP 入口与终端人工批准、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：
+Python 自动评估集覆盖核心路由与状态、团队协作（人工步骤、多人裁决、成员进出）、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、审批持久化、模型标题与短视频脚本技能、行业包按需加载、MCP 入口与终端人工批准、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：
 
 ```text
 Industry: media
@@ -147,20 +145,18 @@ Business request
 
 - **General Core:** WorkItem, deterministic Router, minimum Planner, Role / Skill Registry, and State Engine.
 - **First vertical:** self-media company workflows. Sprint 01 already includes sample roles, skills, and routing for topic selection and content planning.
-- **Adaptive minimum staffing:** single deliverables use their registered skill chain; explicit compound requests are combined by pack rules, ordered by declared input/output dependencies, and deduplicated. Simple software changes use developer + independent QA; architecture is added for cross-module/system design requests.
-- **Industry boundary:** media, engineering, and software roles, skills, and routing rules live in separately registerable Pack modules; the general Router reads rules from the local Registry. External pack discovery is not implemented. Engineering currently produces a local professional workplan; engineering execution handlers are not yet connected.
-- **Software development:** a software workspace selects roles based on scope and produces role-attributed local outputs for supported tasks. Generated files are saved in a Markdown package for review and manual application; the app does not write into a project directory or execute generated code. QA output says tests have not been run.
+- **Adaptive minimum staffing:** single deliverables use their registered skill chain; explicit compound requests are combined by pack rules, ordered by declared input/output dependencies, and deduplicated.
+- **Industry boundary:** media and engineering roles, skills, and routing rules live in separately registerable Pack modules; the general Router reads rules from the local Registry. External pack discovery is not implemented. Engineering currently produces a local professional workplan; engineering execution handlers are not yet connected.
 - **Local-first:** requests, attachments, OCR, workflow state, and outputs stay on-device by default. The app starts no network service and sends no telemetry. Text leaves the device only after the user configures a model and consents to each run.
 
 ## Current implementation
 
 Sprint 01 implements a verifiable routing and planning path: request → WorkItem → route → plan → READY. The media routing example assigns a request to `media.content-planner` with the `media.title-writing` skill.
 
-The desktop workbench accepts media, engineering, and software requests in their matching local workspace. Users can enter text and attach TXT, Markdown, PDF, or common image files in supported workspaces. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not interpret image scenes or objects. Each work item accepts up to five attachments, 15 MiB each. The app creates a WorkItem and minimum role plan; only roles needed for that request need activation. Engineering plans are not executed because handlers are not connected.
+The desktop workbench accepts media and engineering requests in their matching local workspace. Users can enter text and attach TXT, Markdown, PDF, or common image files in supported workspaces. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not interpret image scenes or objects. Each work item accepts up to five attachments, 15 MiB each. The app creates a WorkItem and minimum role plan; only roles needed for that request need activation. Engineering plans are not executed because handlers are not connected.
 
 The workbench also accepts an industry label such as “self-media company,” “MCN,” or “WeChat content operations” and recommends roles from the local registered pack. Recommendations reuse existing roles and do not activate or create them. Unsupported or ambiguous input asks the user to clarify; no model call is made.
 
-For software requests, choose the Software Development workspace in a new empty local folder, enter the request in plain text, and activate the required roles. Keep existing media data in its own workspace. After model setup and per-run consent for remote endpoints, bounded changes use the developer and QA roles; cross-module/system work also uses the architect. The local package does not modify or execute a source repository.
 
 After configuring an AI-compatible endpoint, model, and key, the workbench can run three role stages: content plan, creative brief, and channel-ready draft. The key stays in the operating system credential store. Before each remote run, the UI identifies the endpoint and the request/OCR text being sent and asks for one-time consent; original files stay local. Stage state and versions are saved locally, and a failed run can resume from accepted stages. Users can edit the draft, then explicitly approve it to create a local ZIP containing Markdown, a checklist, and a source index. The app does not sign into social platforms or publish for the user. After manual publication, users can enter views, likes, saves, comments, and shares to create a local metrics review; without a history baseline, the app reports ratios but makes no performance judgment.
 
@@ -208,7 +204,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-The Python evaluation suite covers core routing and state, software-role routing and execution, the rules layer (two gates and loader), the execution kernel and four Solo invariants, durable approvals, model-backed title and short-video script skills, lazy industry packs, the MCP entry and terminal-only approval, the desktop baseline, and offline simulated media workflows. Expected media routing example:
+The Python evaluation suite covers core routing and state, the rules layer (two gates and loader), the execution kernel and four Solo invariants, durable approvals, model-backed title and short-video script skills, lazy industry packs, the MCP entry and terminal-only approval, the desktop baseline, and offline simulated media workflows. Expected media routing example:
 
 ```text
 Industry: media

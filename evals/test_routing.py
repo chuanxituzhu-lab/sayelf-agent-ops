@@ -78,27 +78,6 @@ class RoutingEvalTests(unittest.TestCase):
     def test_r10_hazard(self):
         self.assert_role("整理施工现场安全隐患记录", "engineering.hse")
 
-    def test_software_bug_fix_routes_to_engineer(self):
-        d = self.assert_role("修复 Draftloom 软件代码：微信 access_token 返回 40164 时展示原始公网 IP", "software.engineer")
-        self.assertEqual(("software.bug-fix", "software.test"), d.selected_skills)
-        self.assertEqual("software", d.industry)
-        self.assertEqual(("software.engineer", "software.qa"), tuple(role for role, _ in d.workflow_steps))
-        self.assertEqual(2, len(set(role for role, _ in d.workflow_steps)))
-
-    def test_software_frontend_routes_to_frontend_skill(self):
-        d = self.assert_role("给软件 WebUI 新增封面预览功能", "software.engineer")
-        self.assertEqual(("software.frontend-change", "software.test"), d.selected_skills)
-
-    def test_cross_cutting_software_request_keeps_architect_role(self):
-        d = self.assert_role("为软件平台制定跨模块架构和技术选型，并实现与测试", "software.architect")
-        self.assertEqual(("software.architecture-design", "software.implementation", "software.test"), d.selected_skills)
-        self.assertEqual(3, len(set(role for role, _ in d.workflow_steps)))
-
-    def test_compound_software_scope_uses_one_implementer_and_independent_qa(self):
-        d = self.assert_role("同时调整软件前端页面和后端 API", "software.engineer")
-        self.assertEqual(("software.implementation", "software.test"), d.selected_skills)
-        self.assertEqual(2, len(set(role for role, _ in d.workflow_steps)))
-
     def test_compound_media_request_adds_only_required_roles_and_orders_dependencies(self):
         d = self.assert_role("为小红书写一篇新品体验笔记并生成配图方案", "media.content-planner")
         self.assertEqual(
@@ -112,14 +91,6 @@ class RoutingEvalTests(unittest.TestCase):
         d = self.assert_role("对比两版 BOQ 并比较两版施工图版本差异", "engineering.commercial")
         self.assertEqual(("boq-diff", "drawing-diff"), d.requested_deliverables)
         self.assertEqual(2, len(set(role for role, _ in d.workflow_steps)))
-
-    def test_software_tests_route_to_qa(self):
-        d = self.assert_role("为软件代码补充回归测试用例", "software.qa")
-        self.assertEqual(("software.test",), d.selected_skills)
-
-    def test_software_review_routes_to_qa(self):
-        d = self.assert_role("审查软件仓库中的代码 diff", "software.qa")
-        self.assertEqual(("software.code-review",), d.selected_skills)
 
     def test_article_about_software_stays_in_media(self):
         self.assert_role("写一篇关于软件开发的公众号文章", "media.content-planner")

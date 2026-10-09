@@ -116,11 +116,9 @@ def make_video_script_handler(provider: Any, *, remote: bool, consent: bool):
 
 def make_model_handlers(provider: Any, *, remote: bool, consent: bool) -> dict[str, Any]:
     from .title_llm import make_llm_title_handler
-    from .software_llm import make_software_handlers
 
     return {
         "media.title-writing": make_llm_title_handler(provider, remote=remote, consent=consent),
         "media.content-structure": make_outline_handler(provider, remote=remote, consent=consent),
         "media.short-video-script": make_video_script_handler(provider, remote=remote, consent=consent),
-        **make_software_handlers(provider, remote=remote, consent=consent),
     }

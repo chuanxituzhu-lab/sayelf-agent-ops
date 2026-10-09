@@ -34,7 +34,7 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 | `list_pending_approvals` | 本会话中等待人工决定的交付 |
 | `deliver_task` | 你批准后完成交付；未决定返回 `AWAITING_HUMAN_APPROVAL`；被驳回则退回返工 |
 
-默认注册媒体、土木工程和软件开发行业包。软件功能需求会给出方案设计 → 软件实现 → QA 的岗位步骤；`route_task` 只返回岗位建议。桌面软件工作区在配置模型并逐次同意后可生成本机审阅成果包。MCP `run_task` 尚未连接这些软件执行器，必须保留 `placeholder=true`，不能当成代码已修改或测试已通过。
+默认注册媒体和土木工程行业包；`route_task` 只返回岗位建议。
 
 **没有** approve / deny / decide 工具。
 

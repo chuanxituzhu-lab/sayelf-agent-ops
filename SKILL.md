@@ -1,6 +1,6 @@
 ---
 name: sayelf-agent-ops
-description: "Use when a task should be routed by its deliverable to the right professional role and skill (media / construction engineering / software engineering), or run through the Solo/Team Human + Multi-Agent loop with independent review and per-action human approval. Chinese triggers: Agent Ops / 一人公司 / 交付物路由 / 按交付物分派 / 岗位路由 / 谁来干 / 人工裁决 / Human Gate / 独立审核. Not for build discipline (use sayelf-base) or ordinary questions."
+description: "Use when a task should be routed by its deliverable to the right professional role and skill (media / construction engineering), or run through the Solo/Team Human + Multi-Agent loop with independent review and per-action human approval. Chinese triggers: Agent Ops / 一人公司 / 交付物路由 / 按交付物分派 / 岗位路由 / 谁来干 / 人工裁决 / Human Gate / 独立审核. Not for build discipline (use sayelf-base) or ordinary questions."
 metadata:
   short-description: 交付物优先路由 + Human + Multi-Agent 执行内核
   aliases: [Agent Ops, 一人公司, 交付物路由, 岗位路由, 谁来干, 人工裁决, Human Gate, 独立审核]

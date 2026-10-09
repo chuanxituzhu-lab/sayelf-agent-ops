@@ -161,14 +161,6 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("approve_cli approve", self.text(results[1]))
         self.assertIn('"APPROVED"', self.text(results[1]).replace("'", '"'))
 
-    def test_m03_software_route_available_over_mcp(self):
-        _, results = self.session_call([
-            ("route_task", {"text": "修复 Draftloom 软件代码：微信 40164 错误展示公网 IP"}),
-        ])
-        self.assertIn("software.architect", self.text(results[0]))
-        self.assertIn("software.engineer", self.text(results[0]))
-        self.assertIn("software.bug-fix", self.text(results[0]))
-
 
 if __name__ == "__main__":
     unittest.main()

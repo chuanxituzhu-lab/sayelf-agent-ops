@@ -69,29 +69,4 @@ class RuleReviewer:
                 checks.append(_check("script-duration", 0 < total <= limit * 1.1,
                                      f"总时长 {total:g} 秒（上限 {limit} 秒）"))
 
-            if out.get("type") == "software-design" and not out.get("placeholder"):
-                criteria = out.get("acceptance_criteria") or []
-                files = out.get("files") or []
-                complete = bool(out.get("summary")) and bool(criteria) and bool(files)
-                checks.append(_check("software-design-complete", complete,
-                                     "设计包含摘要、验收标准和文件范围" if complete
-                                     else "设计缺少摘要、验收标准或文件范围"))
-            if out.get("type") == "software-change" and not out.get("placeholder"):
-                files = out.get("files") or []
-                valid_files = bool(files) and all(
-                    isinstance(item, dict) and item.get("path") and item.get("content")
-                    and not str(item["path"]).startswith(("/", "\\"))
-                    and ".." not in str(item["path"]).replace("\\", "/").split("/")
-                    for item in files
-                )
-                checks.append(_check("software-files-review", valid_files,
-                                     "实现包含安全相对路径和非空文件内容" if valid_files
-                                     else "实现文件为空或包含不安全路径"))
-            if out.get("type") == "software-test-report" and not out.get("placeholder"):
-                cases = out.get("test_cases") or []
-                valid_report = bool(cases) and out.get("verification_state") == "not_run"
-                checks.append(_check("software-qa-report", valid_report,
-                                     "测试报告包含用例并标明尚未执行" if valid_report
-                                     else "测试报告缺少用例或错误声称测试已执行"))
-
         return ReviewResult(passed=all(c["ok"] for c in checks), checks=checks)
