@@ -92,6 +92,15 @@ def build_pack() -> IndustryPack:
             ("engineering.quantity-review",), "最终交付物是工程量复核结果。",
         ),
         RouteRule(
+            "engineering.progress-review",
+            lambda text: "形象进度" in text or ("进度" in text and "进度款" not in text and any(
+                term in text for term in ("跟踪", "滞后", "偏差", "核对", "检查", "复盘", "周报", "月报", "计划")
+            )),
+            75,
+            "progress-review", "engineering", "E1", "engineering.production",
+            ("engineering.progress-tracking",), "最终交付物是生产进度核查结果。",
+        ),
+        RouteRule(
             "engineering.test-report-check",
             lambda text: "试验报告" in text or ("试验" in text and "报告" in text),
             70,

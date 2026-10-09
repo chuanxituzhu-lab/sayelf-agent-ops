@@ -1,10 +1,36 @@
 {
   "id": "P-BUILDCOSTIQ-DEMO",
-  "description": "BuildCostIQ 施工项目部示例：3 位人类成员 + 各专业 Agent。人员 id 为占位，接入真实团队时替换；本文件不含任何账号或密钥。",
+  "description": "BuildCostIQ 施工项目部示例：4 位人类成员 + 各专业 Agent。人员 id 为占位，接入真实团队时替换；本文件不含任何账号或密钥。",
   "members": [
-    {"id": "human.pm", "name": "项目经理", "roles": ["owner", "project-manager"]},
-    {"id": "human.cost-lead", "name": "造价负责人", "roles": ["cost-lead"]},
-    {"id": "human.tech-lead", "name": "技术负责人", "roles": ["engineering.technical"]}
+    {
+      "id": "human.pm",
+      "name": "项目经理",
+      "roles": [
+        "owner",
+        "project-manager"
+      ]
+    },
+    {
+      "id": "human.cost-lead",
+      "name": "造价负责人",
+      "roles": [
+        "cost-lead"
+      ]
+    },
+    {
+      "id": "human.tech-lead",
+      "name": "技术负责人",
+      "roles": [
+        "engineering.technical"
+      ]
+    },
+    {
+      "id": "human.prod-lead",
+      "name": "生产负责人",
+      "roles": [
+        "production-lead"
+      ]
+    }
   ],
   "include_default_agents": true,
   "policy": {
@@ -12,9 +38,28 @@
       "boq-diff": "cost-release",
       "cost-analysis": "cost-release",
       "professional-brief": "cost-release",
-      "platform-package": "publish"
+      "platform-package": "publish",
+      "progress-review": "progress-release",
+      "quantity-review": "quantity-release"
     },
-    "gate_approver_roles": {"publish": ["owner"]},
-    "gate_quorum": {"cost-release": ["cost-lead", "project-manager"]}
+    "gate_approver_roles": {
+      "publish": [
+        "owner"
+      ]
+    },
+    "gate_quorum": {
+      "cost-release": [
+        "cost-lead",
+        "project-manager"
+      ],
+      "progress-release": [
+        "production-lead",
+        "project-manager"
+      ],
+      "quantity-release": [
+        "production-lead",
+        "cost-lead"
+      ]
+    }
   }
 }

@@ -22,7 +22,7 @@ def team() -> Runtime:
 class TeamStructureTests(unittest.TestCase):
     def test_t01_template_loads_humans_and_agents(self):
         project = team().project
-        self.assertEqual({"human.pm", "human.cost-lead", "human.tech-lead"}, {h.id for h in project.humans})
+        self.assertEqual({"human.pm", "human.cost-lead", "human.tech-lead", "human.prod-lead"}, {h.id for h in project.humans})
         self.assertEqual("human.pm", project.owner.id)
         self.assertTrue(any(m.kind == "agent" for m in project.members))
 
