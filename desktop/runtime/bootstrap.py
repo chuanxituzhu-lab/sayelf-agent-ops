@@ -213,25 +213,10 @@ def _create_execution_tables(connection):
 
 
 def _create_gate_tables(connection):
-    connection.execute(
-        """CREATE TABLE IF NOT EXISTS gate_approvals (
-            request_id TEXT PRIMARY KEY,
-            workitem_id TEXT NOT NULL,
-            action TEXT NOT NULL,
-            target TEXT NOT NULL,
-            payload_digest TEXT NOT NULL,
-            summary TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            approver TEXT,
-            decided_at TEXT,
-            expires_at TEXT,
-            consumed_at TEXT,
-            denied_at TEXT
-        )"""
-    )
-    connection.execute(
-        "CREATE INDEX IF NOT EXISTS gate_approvals_workitem ON gate_approvals(workitem_id, created_at)"
-    )
+    # Single schema definition shared with the kernel store.
+    from sayelf_agent_ops.approvals_sqlite import create_gate_tables
+
+    create_gate_tables(connection)
 
 
 def _backup_before_migration(connection, root, source_schema):

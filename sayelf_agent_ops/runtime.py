@@ -45,6 +45,7 @@ class Runtime:
         reviewer: Any | None = None,
         loader: SkillLoader | None = None,
         approval_store: ApprovalStore | None = None,
+        id_prefix: str = "WI",
     ):
         self.project = project
         self.registry = registry or build_default_registry()
@@ -59,6 +60,7 @@ class Runtime:
         )
         self.loader = loader or SkillLoader(self.registry, capabilities=discover_capabilities())
         self._pending: dict[str, dict[str, Any]] = {}
+        self.id_prefix = id_prefix
         self.items: dict[str, WorkItem] = {}
         self._events: dict[str, list[dict[str, Any]]] = {}
         self._feedback: dict[str, list[str]] = {}
@@ -97,7 +99,7 @@ class Runtime:
             raise PermissionError("ONLY_HUMANS_SUBMIT")
 
         wi = WorkItem(
-            id=f"WI-{len(self.items) + 1:04d}",
+            id=f"{self.id_prefix}-{len(self.items) + 1:04d}",
             input=text,
             goal=goal or text,
             deliverable=deliverable or text,
@@ -208,6 +210,45 @@ class Runtime:
         self._move(wi, SYSTEM_ROUTER, WorkState.WORKING)
 
     # ------------------------------------------------------------------ decide
+    def finalize(self, wi: WorkItem) -> WorkItem:
+        """Complete a gate the human decided out of band (e.g. the approval CLI).
+
+        The agent that called ``run`` never approves anything: it can only ask
+        whether a human has. Approved → redeem the single-use authorization and
+        deliver. Denied → back to REWORK. Undecided → ``AWAITING_HUMAN_APPROVAL``.
+        """
+        if wi.state != WorkState.APPROVED or not wi.pending_gate:
+            raise TransitionRejected("NO_PENDING_GATE")
+        pending = self._pending.get(wi.id)
+        if not pending or "request" not in pending:
+            raise TransitionRejected("NO_PENDING_REQUEST")
+        store = self.human_gate.store
+        gate = wi.pending_gate
+        if store.get_request(pending["request"]) is None:
+            self._pending.pop(wi.id, None)
+            self._log(wi, wi.approver or SYSTEM_RUNTIME, "decision", gate=gate, approve=False,
+                      reason="denied-out-of-band", request=pending["request"])
+            wi.pending_gate = None
+            wi.rework_count += 1
+            self._move(wi, wi.approver or SYSTEM_RUNTIME, WorkState.REWORK)
+            return wi
+        approval = store.get_approval(pending["request"])
+        if approval is None:
+            raise TransitionRejected("AWAITING_HUMAN_APPROVAL")
+        if not self.project.can_decide(approval.approver, gate):
+            raise PermissionError(f"NOT_ALLOWED_TO_DECIDE:{approval.approver}:{gate}")
+        token = self.human_gate.authorize(
+            wi, pending["request"], pending["action"], pending["target"], wi.outputs
+        )
+        self._pending.pop(wi.id, None)
+        self._log(wi, approval.approver, "decision", gate=gate, approve=True,
+                  reason="approved-out-of-band", request=pending["request"])
+        wi.pending_gate = None
+        self._move(wi, approval.approver, WorkState.DELIVERED)
+        self._log(wi, approval.approver, "delivered", authorization=token.request_id,
+                  payload_digest=token.payload_digest)
+        return wi
+
     def decide(self, wi: WorkItem, actor_id: str, approve: bool, reason: str = "") -> WorkItem:
         if wi.state != WorkState.APPROVED or not wi.pending_gate:
             raise TransitionRejected("NO_PENDING_GATE")

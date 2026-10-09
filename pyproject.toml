@@ -4,12 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sayelf-agent-ops"
-version = "0.4.0a1"
+version = "0.5.0a1"
 description = "Sayelf Agent Ops: Human + Multi-Agent execution and trusted delivery"
 requires-python = ">=3.11"
 
+[project.optional-dependencies]
+mcp = ["mcp>=1.2"]
+
 [project.scripts]
 sayelf-agent-ops-demo = "sayelf_agent_ops.demo:main"
+sayelf-agent-ops-mcp = "sayelf_agent_ops.mcp_server:main"
+sayelf-approve = "sayelf_agent_ops.approve_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["sayelf_agent_ops", "sayelf_agent_ops.*"]

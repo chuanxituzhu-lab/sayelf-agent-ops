@@ -8,7 +8,7 @@ metadata:
 
 # Sayelf Agent Ops
 
-> 当前内容版本：0.4.0a1。
+> 当前内容版本：0.5.0a1。
 
 与 `sayelf-base` 是上下两层：sayelf-base 管“怎么造”（构建门禁，唯一底座）；本 Skill 管“谁来干”（按交付物路由与执行闭环）。两层叠加，不互相替代。
 
@@ -30,6 +30,8 @@ python D:\Codex\skills\sayelf-agent-ops\scripts\route.py "写 5 个公众号标�
 ```powershell
 python D:\Codex\skills\sayelf-agent-ops\scripts\route.py --run "把已确认的文章整理成公众号草稿发布准备包"
 ```
+
+已注册 MCP 入口时（见 `docs/mcp.md`），优先用 MCP 工具 `run_task` / `deliver_task`；需要人工裁决的交付，请提示用户在终端运行 `python -m sayelf_agent_ops.approve_cli approve <请求号>`，不要尝试代为批准。
 
 输出为 JSON。`ok=false` 且 `error=UNROUTABLE_DELIVERABLE` 表示交付物不明确：向用户澄清，不要硬套岗位。
 
