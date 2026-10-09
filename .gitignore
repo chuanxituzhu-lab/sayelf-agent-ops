@@ -4,3 +4,9 @@ __pycache__/
 .pytest_cache/
 dist/
 build/
+/desktop/tauri/node_modules/
+/desktop/tauri/public/ocr/
+/desktop/tauri/src-tauri/target/
+/desktop/tauri/src-tauri/binaries/*
+/desktop/tauri/src-tauri/gen/
+/desktop/runtime/.venv/

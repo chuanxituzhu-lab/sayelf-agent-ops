@@ -37,6 +37,10 @@ class RoutingEvalTests(unittest.TestCase):
             d.selected_skills,
         )
 
+    def test_wechat_generic_content_keeps_article_route(self):
+        d = self.assert_role("公众号内容", "media.content-planner")
+        self.assertEqual("article", d.deliverable_type)
+
     def test_r03_existing_article_images(self):
         self.assert_role("给已有文章生成 6 张配图", "media.creative-producer")
 
@@ -45,6 +49,19 @@ class RoutingEvalTests(unittest.TestCase):
 
     def test_r05_wechat_performance(self):
         self.assert_role("分析公众号数据表现并复盘", "media.growth-operator")
+
+    def test_social_channels_route_titles(self):
+        for channel in ("小红书", "公众号", "视频号", "抖音"):
+            with self.subTest(channel=channel):
+                decision = self.assert_role(f"为{channel}写5个标题", "media.content-planner")
+                self.assertEqual("title-list", decision.deliverable_type)
+
+    def test_short_video_channels_route_scripts(self):
+        for channel in ("视频号", "抖音"):
+            with self.subTest(channel=channel):
+                decision = self.assert_role(f"为{channel}写一个口播脚本", "media.content-planner")
+                self.assertEqual("video-script", decision.deliverable_type)
+                self.assertIn("media.short-video-script", decision.selected_skills)
 
     def test_r06_boq_compare(self):
         self.assert_role("对比两版 BOQ 的清单特征变化和漏项", "engineering.commercial")

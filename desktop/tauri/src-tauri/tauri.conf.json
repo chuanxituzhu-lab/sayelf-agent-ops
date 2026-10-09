@@ -1,0 +1,52 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Sayelf Agent Ops",
+  "version": "0.1.0",
+  "identifier": "sayelf.agent-ops",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420"
+  },
+  "app": {
+    "windows": [{
+      "title": "Sayelf Agent Ops",
+      "width": 760,
+      "height": 780,
+      "minWidth": 360,
+      "minHeight": 620,
+      "resizable": true
+    }],
+    "security": { "csp": "default-src 'self'; style-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; img-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost" }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "dmg"],
+    "resources": {
+      "../../../installer/THIRD-PARTY-NOTICES.md": "THIRD-PARTY-NOTICES.md",
+      "../../../installer/licenses/*": "licenses/"
+    },
+    "category": "Productivity",
+    "shortDescription": "本机 Agent Ops 工作台",
+    "longDescription": "Sayelf Agent Ops 桌面应用。",
+    "externalBin": ["binaries/sayelf-runtime"],
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "languages": ["SimpChinese", "English"],
+        "compression": "lzma",
+        "startMenuFolder": "Sayelf Agent Ops",
+        "installerIcon": "icons/icon.ico",
+        "uninstallerIcon": "icons/icon.ico",
+        "installerHooks": "../../../installer/windows/hooks.nsh"
+      },
+      "webviewInstallMode": { "type": "offlineInstaller" }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "dmg": { "windowSize": { "width": 660, "height": 400 } }
+    },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/256x256.png", "icons/icon.icns", "icons/icon.ico"]
+  }
+}

@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f2" />
+    <title>Sayelf Agent Ops</title>
+    <link rel="icon" type="image/png" href="/sayelf-logo.png" />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand">
+        <img class="brand-logo" src="/sayelf-logo.png" alt="山野精灵 Sayelf 标志" />
+        <div><p class="eyebrow">SAYELF · AGENT OPS</p><h1>最少岗位，专业闭环。</h1></div>
+      </header>
+
+      <section class="card" aria-labelledby="setup-title">
+        <div class="heading"><div><p class="eyebrow">首次设置</p><h2 id="setup-title">准备你的工作空间</h2></div><span id="status-pill" class="pill">检查中</span></div>
+        <p class="intro">选择一个行业包，Sayelf 会在本机准备好工作空间并检查运行状态。</p>
+        <label for="pack">行业包</label>
+        <select id="pack"><option value="media">内容与媒体</option><option value="engineering">工程与项目</option></select>
+        <div class="location"><div><label>数据保存位置</label><p id="data-location">使用本机默认位置</p></div><button id="choose-location" class="secondary">更改位置</button></div>
+        <button id="initialize" class="primary">开始设置</button>
+        <p id="message" class="message" role="status" aria-live="polite">正在检查本机环境…</p>
+      </section>
+
+      <section class="card health-card" aria-labelledby="health-title">
+        <div class="heading"><div><p class="eyebrow">本机状态</p><h2 id="health-title">环境检查</h2></div><button id="recheck" class="secondary">重新检查</button></div>
+        <ul id="checks" class="checks"><li><span>本地数据库</span><span>—</span></li><li><span>数据目录</span><span>—</span></li><li><span>Agent Ops Core</span><span>—</span></li><li><span>角色与技能注册表</span><span>—</span></li></ul>
+        <p class="note">需求识别与本地工作方案无需联网。配置 AI 服务后可生成内容；平台发布仍由你手动完成。</p>
+      </section>
+
+      <section id="role-management-card" class="card" aria-labelledby="role-management-title" hidden>
+        <div class="heading"><div><p class="eyebrow">岗位注册表</p><h2 id="role-management-title">行业岗位推荐与激活</h2></div></div>
+        <p id="role-recommendation-note" class="intro">输入行业，查看当前行业包中已注册的 Agent 岗位。</p>
+        <form id="industry-recommendation-form" class="industry-recommender">
+          <label for="industry-input">你的行业</label>
+          <div class="industry-input-row"><input id="industry-input" maxlength="120" placeholder="例如：自媒体公司、MCN、工程项目" required /><button id="recommend-industry" class="secondary" type="submit">推荐岗位</button></div>
+          <p class="subtle">只从本机已注册岗位中推荐；不会自动激活或新建角色，行业名称只在本机匹配。</p>
+          <p id="industry-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+        <div class="role-heading role-management-heading"><label>当前行业包岗位</label><button id="activate-media-team" class="secondary" type="button">启用完整内容流程</button></div>
+        <div id="role-list" class="role-list"><p class="subtle">正在读取角色…</p></div>
+      </section>
+
+      <section id="recent-workflows-card" class="card" aria-labelledby="recent-workflows-title" hidden>
+        <div class="heading"><div><p class="eyebrow">本机记录</p><h2 id="recent-workflows-title">最近内容任务</h2></div><button id="refresh-recent-workflows" class="secondary" type="button">刷新</button></div>
+        <p class="subtle">任务记录和成果只保存在本机。中断的任务可以从已完成步骤继续；继续使用云端模型时需要重新确认。</p>
+        <div id="recent-workflows-list" class="recent-workflow-list" role="list"><p class="subtle">正在读取本机记录…</p></div>
+        <p id="recent-workflows-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <section id="workbench" class="card" aria-labelledby="workbench-title" hidden>
+        <div class="heading"><div><p class="eyebrow">需求入口</p><h2 id="workbench-title">创建一项内容工作</h2></div><span class="pill">本机处理</span></div>
+        <p class="intro">写下你要完成的事，添加文字、PDF 或照片。Sayelf 会提取文档文字、OCR 照片里的文字，再推荐合适角色。当前不会理解照片场景或物体；请把希望处理的画面内容写进需求。</p>
+
+        <details class="provider-settings">
+          <summary>AI 服务设置 <span id="provider-status" class="subtle">尚未配置</span></summary>
+          <p class="subtle">使用兼容 Chat Completions 的服务地址。密钥保存在 Windows 凭据管理器或 macOS 钥匙串。</p>
+          <form id="provider-form">
+            <label for="provider-endpoint">兼容接口服务地址</label>
+            <input id="provider-endpoint" type="url" maxlength="2048" placeholder="https://服务地址/v1；接口需兼容 Chat Completions" required />
+            <label for="provider-model">模型名称</label>
+            <input id="provider-model" maxlength="200" placeholder="由模型服务提供" required />
+            <label for="provider-key">API 密钥</label>
+            <input id="provider-key" type="password" maxlength="4096" autocomplete="new-password" required />
+            <button id="save-provider" class="secondary" type="submit">保存并测试连接</button>
+            <button id="clear-provider" class="secondary" type="button">清除 AI 服务设置</button>
+            <p id="provider-message" class="message" role="status" aria-live="polite"></p>
+          </form>
+          <p class="note">连接测试只发送固定测试文本。生成内容前，Sayelf 会显示本次发送的服务地址和文字范围，并要求再次确认。</p>
+        </details>
+
+        <form id="request-form">
+          <label for="channel">发布平台</label>
+          <select id="channel" required>
+            <option value="小红书">小红书</option>
+            <option value="公众号">公众号</option>
+            <option value="视频号">视频号</option>
+            <option value="抖音">抖音</option>
+            <option value="通用媒体内容">通用媒体内容</option>
+          </select>
+
+          <label for="request">你准备做什么？</label>
+          <textarea id="request" rows="5" maxlength="20000" required placeholder="例如：根据这些照片和产品资料，写一篇小红书新品体验笔记，包含标题、正文和话题标签。"></textarea>
+
+          <div class="attachment-heading"><div><label>需求材料</label><p class="subtle">支持 TXT、Markdown、PDF 和常见图片；单个不超过 15 MiB，最多 5 个。图片只做文字识别，画面语义需写在需求中。</p></div><button id="add-files" class="secondary" type="button">添加文件</button></div>
+          <ul id="attachment-list" class="attachment-list"><li class="subtle empty-attachments">还没有添加材料</li></ul>
+
+          <button id="create-workitem" class="primary" type="submit">识别需求并生成工作方案</button>
+          <p id="work-message" class="message" role="status" aria-live="polite"></p>
+        </form>
+
+        <div id="activation-prompt" class="activation-prompt" hidden>
+          <div><strong id="suggested-role-name"></strong><p id="suggested-role-reason" class="subtle"></p></div>
+          <button id="activate-and-continue" class="primary" type="button">激活角色并生成方案</button>
+        </div>
+      </section>
+
+      <section id="result-card" class="card result-card" aria-labelledby="result-title" hidden>
+        <div class="heading"><div><p class="eyebrow">工作成果出口</p><h2 id="result-title">工作方案</h2></div><span id="result-state" class="pill">已规划</span></div>
+        <p id="result-summary" class="intro"></p>
+        <div id="execution-panel" class="execution-panel" hidden>
+          <p id="provider-target" class="subtle"></p>
+          <label class="consent-row"><input id="provider-consent" type="checkbox" /> 我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。</label>
+          <button id="run-media-workflow" class="primary" type="button">生成内容与平台发布包</button>
+          <p id="execution-message" class="message" role="status" aria-live="polite"></p>
+        </div>
+        <label for="result-content">可编辑成果（Markdown）</label>
+        <textarea id="result-content" class="result-editor" rows="18" spellcheck="false"></textarea>
+        <div class="result-actions">
+          <button id="save-result" class="primary" type="button">保存到成果目录</button>
+          <button id="export-result" class="secondary" type="button">另存为…</button>
+          <button id="approve-publish-package" class="secondary" type="button" hidden>确认成果并生成发布包</button>
+        </div>
+        <section id="performance-panel" class="performance-panel" hidden aria-labelledby="performance-title">
+          <div><p class="eyebrow">发布后复盘</p><h3 id="performance-title">记录内容表现</h3></div>
+          <p class="subtle">从平台手动填写数据。系统只在本机计算比例，不连接平台账号，也不发送给模型。</p>
+          <form id="performance-form" class="performance-form">
+            <label for="metric-views">浏览量 <span aria-hidden="true">*</span></label><input id="metric-views" type="number" min="1" max="1000000000000" step="1" required />
+            <label for="metric-likes">点赞</label><input id="metric-likes" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-saves">收藏</label><input id="metric-saves" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-comments">评论</label><input id="metric-comments" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <label for="metric-shares">分享</label><input id="metric-shares" type="number" min="0" max="1000000000000" step="1" value="0" />
+            <button id="save-performance" class="secondary" type="submit">保存本机复盘记录</button>
+          </form>
+          <p id="performance-message" class="message" role="status" aria-live="polite"></p>
+          <textarea id="performance-output" class="performance-output" rows="12" readonly hidden aria-label="本机内容表现复盘"></textarea>
+        </section>
+        <p id="result-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <footer>需求材料、文字识别和成果都保存在本机。使用云端模型前会逐次确认发送内容；发布包由你手动发布。</footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
