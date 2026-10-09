@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 from desktop.runtime import bootstrap
-from desktop.runtime.kernel_tasks import run_titles
+from desktop.runtime.kernel_tasks import run_kernel_task
 from sayelf_agent_ops.actors import Project
 from sayelf_agent_ops.executor import BuiltinExecutor
 from sayelf_agent_ops.loader import SkillLoader, SkillManifest
@@ -140,6 +140,15 @@ class PackLoadingTests(unittest.TestCase):
         self.assertEqual((), loader.loaded_packs)
 
 
+def make_workitem(root, workitem_id, request, channel=""):
+    item_dir = root / "workitems" / workitem_id
+    item_dir.mkdir()
+    (item_dir / "request.json").write_text(json.dumps(
+        {"id": workitem_id, "request": request, "channel": channel, "attachments": []},
+        ensure_ascii=False), encoding="utf-8")
+    return item_dir / "request.json"
+
+
 class DesktopKernelTitlesTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -149,16 +158,19 @@ class DesktopKernelTitlesTests(unittest.TestCase):
         bootstrap.configure_provider(self.root, "http://127.0.0.1:11434/v1", "local-model")
 
     def test_d01_role_must_be_active(self):
+        make_workitem(self.root, "WI-T1", "写 3 个公众号标题")
         with self.assertRaises(bootstrap.BootstrapError) as ctx:
-            run_titles(self.root, "写 3 个公众号标题", TitleModel())
+            run_kernel_task(self.root, "WI-T1", TitleModel())
         self.assertEqual("ROLE_NOT_ACTIVE", ctx.exception.reason)
 
     def test_d02_titles_delivered_and_saved_locally(self):
         bootstrap.set_role_active(self.root, "media.content-planner", True)
-        result = run_titles(self.root, '给"山野精灵"生成 3 个小红书标题', TitleModel())
+        make_workitem(self.root, "WI-T2", '给"山野精灵"生成 3 个标题', channel="小红书")
+        result = run_kernel_task(self.root, "WI-T2", TitleModel())
         self.assertEqual(0, result["code"])
-        self.assertEqual(3, len(result["data"]["titles"]))
-        self.assertTrue(Path(result["data"]["output_path"]).is_file())
+        self.assertEqual("title-list", result["data"]["deliverable_type"])
+        self.assertIn("1. ", result["data"]["result_content"])
+        self.assertTrue((self.root / "outputs" / result["data"]["output_name"]).is_file())
         log = json.loads((self.root / "logs" / f"{result['data']['task_id']}.json").read_text(encoding="utf-8"))
         self.assertNotIn("山野精灵", json.dumps([e for e in log["events"] if e["event"] == "submit"],
                                                  ensure_ascii=False))
@@ -166,25 +178,22 @@ class DesktopKernelTitlesTests(unittest.TestCase):
     def test_d03_remote_endpoint_requires_consent_before_call(self):
         bootstrap.set_role_active(self.root, "media.content-planner", True)
         bootstrap.configure_provider(self.root, "https://example.invalid/v1", "remote-model")
+        make_workitem(self.root, "WI-T3", "写 3 个公众号标题")
         model = TitleModel()
         with self.assertRaises(bootstrap.BootstrapError) as ctx:
-            run_titles(self.root, "写 3 个公众号标题", model)
+            run_kernel_task(self.root, "WI-T3", model)
         self.assertEqual("MODEL_CONSENT_REQUIRED", ctx.exception.reason)
         self.assertEqual([], model.calls)
 
-    def test_d04_non_title_request_is_rejected(self):
+    def test_d04_non_kernel_deliverable_is_rejected(self):
         bootstrap.set_role_active(self.root, "media.content-planner", True)
+        make_workitem(self.root, "WI-T4", "写一篇完整公众号文章")
         with self.assertRaises(bootstrap.BootstrapError) as ctx:
-            run_titles(self.root, "写一篇完整公众号文章", TitleModel())
+            run_kernel_task(self.root, "WI-T4", TitleModel())
         self.assertEqual("UNROUTABLE_DELIVERABLE", ctx.exception.reason)
 
     def test_d05_workplan_outside_pack_gets_clear_message(self):
-        item_dir = self.root / "workitems" / "WI-ENG-1"
-        item_dir.mkdir()
-        request = item_dir / "request.json"
-        request.write_text(json.dumps({"id": "WI-ENG-1", "request": "对比两版 BOQ 的清单特征变化和漏项",
-                                       "channel": "", "attachments": []}, ensure_ascii=False),
-                           encoding="utf-8")
+        request = make_workitem(self.root, "WI-ENG-1", "对比两版 BOQ 的清单特征变化和漏项")
         out = io.StringIO()
         with redirect_stdout(out):
             code = bootstrap.main(["plan", "--data-dir", str(self.root), "--request-file", str(request)])

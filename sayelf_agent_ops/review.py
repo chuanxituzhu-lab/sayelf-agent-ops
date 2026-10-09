@@ -42,7 +42,7 @@ class RuleReviewer:
                 ))
             if out.get("type") == "title-list":
                 items = [str(x).strip() for x in out.get("items", [])]
-                want = requested_count(wi.input)
+                want = requested_count(wi.goal or wi.input)
                 checks.append(_check("title-count", len(items) == want, f"要求 {want} 个，实际 {len(items)} 个"))
                 checks.append(_check("title-non-empty", all(items), "标题均非空" if all(items) else "存在空标题"))
                 checks.append(_check("title-unique", len(set(items)) == len(items),
@@ -50,5 +50,23 @@ class RuleReviewer:
                 too_long = [t for t in items if len(t) > WECHAT_TITLE_MAX]
                 checks.append(_check("title-length", not too_long,
                                      f"均不超过 {WECHAT_TITLE_MAX} 字" if not too_long else f"{len(too_long)} 个超过 {WECHAT_TITLE_MAX} 字"))
+
+            if out.get("type") == "outline" and not out.get("placeholder"):
+                items = [str(x).strip() for x in out.get("items", [])]
+                checks.append(_check("outline-size", 3 <= len(items) <= 10,
+                                     f"大纲 {len(items)} 个要点（应为 3–10 个）"))
+                checks.append(_check("outline-unique", len(set(items)) == len(items) and all(items),
+                                     "要点非空且不重复" if len(set(items)) == len(items) and all(items) else "存在空要点或重复要点"))
+            if out.get("type") == "video-script" and not out.get("placeholder"):
+                scenes = out.get("scenes") or []
+                total = sum(float(s.get("seconds", 0)) for s in scenes)
+                limit = out.get("duration_seconds") or 60
+                checks.append(_check("script-hook", bool(str(out.get("hook", "")).strip()), "开头钩子已写" if str(out.get("hook", "")).strip() else "缺少开头钩子"))
+                checks.append(_check("script-scenes", 3 <= len(scenes) <= 12, f"{len(scenes)} 个镜头（应为 3–12 个）"))
+                incomplete = [i + 1 for i, s in enumerate(scenes) if not (s.get("shot") and s.get("voiceover"))]
+                checks.append(_check("script-scene-complete", not incomplete,
+                                     "每个镜头都有画面和口播" if not incomplete else f"第 {incomplete} 个镜头缺画面或口播"))
+                checks.append(_check("script-duration", 0 < total <= limit * 1.1,
+                                     f"总时长 {total:g} 秒（上限 {limit} 秒）"))
 
         return ReviewResult(passed=all(c["ok"] for c in checks), checks=checks)

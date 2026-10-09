@@ -8,7 +8,7 @@ metadata:
 
 # Sayelf Agent Ops
 
-> 当前内容版本：0.3.0a1。
+> 当前内容版本：0.4.0a1。
 
 与 `sayelf-base` 是上下两层：sayelf-base 管“怎么造”（构建门禁，唯一底座）；本 Skill 管“谁来干”（按交付物路由与执行闭环）。两层叠加，不互相替代。
 

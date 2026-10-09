@@ -1,8 +1,9 @@
-"""Desktop entry for tasks that run on the Agent Ops kernel (Runtime).
+"""Desktop entry for work items that run on the Agent Ops kernel (Runtime).
 
-First task: title generation with the configured chat model. It reuses the
-workspace provider settings, the per-run consent rule for remote endpoints,
-and the durable HumanGate store.
+The router decides the engine: a work item whose deliverable is in
+``KERNEL_DELIVERABLES`` can run here; everything else keeps using the
+three-stage media workflow. Both share the workspace provider settings, the
+per-run consent rule for remote endpoints, and the durable HumanGate store.
 """
 from __future__ import annotations
 
@@ -18,75 +19,102 @@ from sayelf_agent_ops.models import WorkItem
 from sayelf_agent_ops.registry import build_registry
 from sayelf_agent_ops.router import Router
 from sayelf_agent_ops.runtime import Runtime
-from sayelf_agent_ops.skills.title_llm import make_llm_title_handler
+from sayelf_agent_ops.skills.video_llm import make_model_handlers
 
-TITLE_ROLE = "media.content-planner"
-MAX_TEXT = 2_000
+KERNEL_DELIVERABLES = {
+    "title-list": "标题候选",
+    "video-script": "短视频脚本",
+}
 
 
-def run_titles(path, text, provider, allow_external=False):
-    if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
-        raise bootstrap.BootstrapError("INVALID_WORKITEM")
+def _routing_input(request):
+    extracted = "\n".join(
+        f"\n材料《{entry['name']}》识别文字：\n{entry.get('extracted_text', '')}"
+        for entry in request.get("attachments", [])
+        if entry.get("extracted_text")
+    )
+    return "\n".join((request.get("channel", ""), request["request"], extracted))
+
+
+def _markdown(deliverable, outputs):
+    if deliverable == "title-list":
+        titles = next(o["items"] for o in outputs if o.get("type") == "title-list")
+        body = "# 标题候选\n\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1))
+    else:
+        script = next(o for o in outputs if o.get("type") == "video-script")
+        outline = next((o["items"] for o in outputs if o.get("type") == "outline"), [])
+        body = script["content"] + "\n## 内容大纲\n\n" + "\n".join(f"{i}. {p}" for i, p in enumerate(outline, 1))
+    return body + "\n\n由模型生成，经产出者自检与独立审核；发布前请人工确认事实与平台规范。\n"
+
+
+def run_kernel_task(path, workitem_id, provider, allow_external=False):
+    workitem_id = bootstrap._validate_workitem_id(workitem_id)
     status = bootstrap.health(path)
     if status["pack"] != "media":
         raise bootstrap.BootstrapError("WORKFLOW_INVALID")
     root = bootstrap.data_root(status["data_dir"])
+    request = bootstrap._load_workitem_request(root, root / "workitems" / workitem_id / "request.json")
+    text = _routing_input(request)
+
     registry = build_registry(("media",))
     with bootstrap._opened(root) as connection:
         bootstrap._activate_registered_roles(connection, registry, "media")
-    if TITLE_ROLE not in registry.active_role_ids:
-        raise bootstrap.BootstrapError("ROLE_NOT_ACTIVE")
-
-    probe = WorkItem(id="PROBE", input=text, goal=text, deliverable=text)
+    probe = WorkItem(id=workitem_id, input=text, goal=request["request"], deliverable=text)
     try:
         decision = Router(registry).route(probe)
     except ValueError:
         raise bootstrap.BootstrapError("UNROUTABLE_DELIVERABLE") from None
-    if decision.deliverable_type != "title-list":
+    if decision.deliverable_type not in KERNEL_DELIVERABLES:
         raise bootstrap.BootstrapError("UNROUTABLE_DELIVERABLE")
+    if decision.selected_role not in registry.active_role_ids:
+        raise bootstrap.BootstrapError("ROLE_NOT_ACTIVE")
 
     config = bootstrap.provider_status(root)
     remote = not is_local_endpoint(config["endpoint"])
     if remote and allow_external is not True:
         # Checked before any model call: nothing leaves the device without consent.
         raise bootstrap.BootstrapError("MODEL_CONSENT_REQUIRED")
-    handler = make_llm_title_handler(provider, remote=remote, consent=allow_external is True)
+    handlers = make_model_handlers(provider, remote=remote, consent=allow_external is True)
     runtime = Runtime(
-        Project.solo(LOCAL_HUMAN),
+        Project.solo(LOCAL_HUMAN, registry=registry),
         registry=registry,
-        executor=BuiltinExecutor({"media.title-writing": handler}, registry=registry),
+        executor=BuiltinExecutor(handlers, registry=registry),
         approval_store=SQLiteApprovalStore(root),
     )
-    wi = runtime.run(runtime.submit(text, industry="media"))
+    wi = runtime.run(runtime.submit(text, goal=request["request"], industry="media"))
     events = runtime.events(wi)
     failed = [e for e in events if e["event"] == "executor-failed"]
-    titles = next((o.get("items", []) for o in wi.outputs if o.get("type") == "title-list"), [])
 
-    task_id = f"TITLES-{uuid.uuid4().hex[:12]}"
+    task_id = f"KT-{uuid.uuid4().hex[:12]}"
+    deliverable = decision.deliverable_type
     record = {
         "task_id": task_id,
+        "workitem_id": workitem_id,
+        "deliverable_type": deliverable,
         "state": wi.state,
-        "titles": titles if wi.state == "DELIVERED" else [],
         "assignee": wi.assignee,
         "reviewer": wi.reviewer,
         "rework_count": wi.rework_count,
-        # Events carry codes, digests and actor ids only; the request text is not stored here.
+        # Events carry codes, digests and actor ids only; request text stays out of the log.
         "events": [{k: v for k, v in e.items() if k != "input"} for e in events],
     }
-    log_path = root / "logs" / f"{task_id}.json"
-    log_path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+    (root / "logs" / f"{task_id}.json").write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    roles = bootstrap._role_details(registry, "media")
     if wi.state == "DELIVERED":
-        output_path = root / "outputs" / f"{task_id}.md"
-        output_path.write_text(
-            "# 标题候选\n\n" + "\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1))
-            + "\n\n由模型生成，经产出者自检与独立审核；发布前请人工确认。\n",
-            encoding="utf-8",
-        )
-        return {"code": 0, "msg": "标题已生成并通过自检与独立审核。",
-                "data": {**record, "output_path": str(output_path)}}
+        content = _markdown(deliverable, wi.outputs)
+        output_path = root / "outputs" / f"{workitem_id}-{deliverable}-{task_id}.md"
+        output_path.write_text(content, encoding="utf-8")
+        return {
+            "code": 0,
+            "msg": f"{KERNEL_DELIVERABLES[deliverable]}已生成，并通过产出者自检与独立审核。",
+            "data": {**record, "kernel_result": True, "label": KERNEL_DELIVERABLES[deliverable],
+                     "result_content": content, "output_name": output_path.name, "roles": roles},
+        }
     reason = failed[-1]["code"] if failed else "REVIEW_NOT_PASSED"
     return {
         "code": 20,
-        "msg": bootstrap.MESSAGES.get(reason, "标题多轮审核未通过，已停下交给你处理。"),
-        "data": {**record, "reason": reason},
+        "msg": bootstrap.MESSAGES.get(reason, "多轮审核仍未通过，已停下交给你处理；可调整需求后重试。"),
+        "data": {**record, "reason": reason, "roles": roles},
     }

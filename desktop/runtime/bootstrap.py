@@ -49,6 +49,7 @@ MESSAGES = {
     "MODEL_INPUT_TOO_LARGE": "本次材料过长，请减少附件或缩短需求后再试。",
     "UNROUTABLE_DELIVERABLE": "这项需求不属于当前行业包，或没有说清要交付什么；请补充要交付的成果（如标题、文章、配图、发布稿）。",
     "MODEL_CALL_FAILED": "模型调用失败；请检查服务配置后重试。",
+    "OUTLINE_MISSING": "内容大纲没有生成，脚本步骤已停下；请重试。",
 }
 
 
@@ -676,7 +677,7 @@ def main(argv=None):
     parser.add_argument("action", choices=(
         "initialize", "health", "set-role", "plan", "provider-config",
         "provider-status", "provider-clear", "provider-test", "execute-media", "approve-export",
-        "performance-review", "recent-workflows", "saved-media-result", "kernel-titles",
+        "performance-review", "recent-workflows", "saved-media-result", "kernel-run",
     ))
     parser.add_argument("--data-dir")
     parser.add_argument("--pack", choices=("media", "engineering"), default="media")
@@ -693,7 +694,6 @@ def main(argv=None):
     parser.add_argument("--resume-run-id")
     parser.add_argument("--run-id")
     parser.add_argument("--version", type=int)
-    parser.add_argument("--text")
     args = parser.parse_args(argv)
     try:
         if args.action == "initialize":
@@ -719,7 +719,7 @@ def main(argv=None):
             with _opened(root) as connection:
                 connection.execute("DELETE FROM ai_provider WHERE id=1")
             result = {"code": 0, "msg": "AI 服务配置已清除。", "data": {"configured": False}}
-        elif args.action in {"provider-test", "execute-media", "kernel-titles"}:
+        elif args.action in {"provider-test", "execute-media", "kernel-run"}:
             from desktop.runtime.media_workflow import execute_media_workflow, test_provider
             from desktop.runtime.model_provider import OpenAICompatibleProvider
 
@@ -730,10 +730,13 @@ def main(argv=None):
             provider = OpenAICompatibleProvider(
                 config["endpoint"], config["model"], api_key, config["timeout_seconds"]
             )
-            if args.action == "kernel-titles":
-                from desktop.runtime.kernel_tasks import run_titles
+            if args.action == "kernel-run":
+                from desktop.runtime.kernel_tasks import run_kernel_task
 
-                result = run_titles(args.data_dir, args.text, provider, allow_external=args.allow_external)
+                if not args.workitem_id:
+                    raise BootstrapError("WORKFLOW_INVALID")
+                result = run_kernel_task(args.data_dir, args.workitem_id, provider,
+                                         allow_external=args.allow_external)
             elif args.action == "provider-test":
                 try:
                     data = test_provider(provider)

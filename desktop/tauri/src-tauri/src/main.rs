@@ -683,6 +683,37 @@ async fn execute_media_workflow(
     .await
 }
 
+/// Runs a work item whose deliverable the kernel owns (titles, short-video
+/// scripts). The sidecar re-routes from the stored request and refuses any
+/// other deliverable, so the UI cannot push arbitrary work onto the kernel.
+#[tauri::command]
+async fn execute_kernel_task(
+    app: AppHandle,
+    workitem_id: String,
+    consent_to_provider: bool,
+) -> Result<Value, String> {
+    if !valid_workitem_id(&workitem_id) {
+        return Err("工作单编号无效。".into());
+    }
+    let data_dir = require_workspace(&app)?;
+    let api_key = provider_credential()?
+        .get_password()
+        .map_err(|_| "请先保存 AI 服务密钥。".to_string())?;
+    let mut arguments = vec!["--workitem-id".into(), workitem_id];
+    if consent_to_provider {
+        arguments.push("--allow-external".into());
+    }
+    invoke_runtime_with_key(
+        &app,
+        "kernel-run",
+        Some(data_dir),
+        None,
+        arguments,
+        Some(api_key),
+    )
+    .await
+}
+
 #[tauri::command]
 async fn list_recent_media_workflows(app: AppHandle) -> Result<Value, String> {
     let data_dir = require_workspace(&app)?;
@@ -890,6 +921,7 @@ fn main() {
             clear_ai_provider,
             test_ai_provider,
             execute_media_workflow,
+            execute_kernel_task,
             list_recent_media_workflows,
             load_saved_media_result,
             approve_and_export_media_package,

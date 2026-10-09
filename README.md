@@ -67,6 +67,7 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 - **按需加载：** 只加载计划需要的 Skill；缺能力、非商用许可或超出上下文预算时停下并说明原因。
 - **审批落盘：** 桌面“确认成果并生成发布包”经同一道授权门，授权号写入发布包清单，记录保存在本机 SQLite，重启后仍可校验。
 - **按行业包加载：** 工作空间只加载自己的行业包；其他行业的需求会提示补充，不会被硬套岗位。
+- **桌面里用内核：** 交付物是标题或短视频脚本的工作单，执行面板会出现“生成标题”或“生成短视频脚本”，由产出岗位生成并自检、独立审核岗位检查，不合格自动返工。
 - **四条 Solo 不变式**由 `evals/test_solo_invariants.py` 强制。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [规则层规格](docs/sprint-02-gates-spec.md)。
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。
@@ -92,7 +93,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-当前 Python 自动评估集共 116 个用例：核心路由与状态、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、审批持久化、模型标题技能、行业包按需加载、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：
+当前 Python 自动评估集共 126 个用例：核心路由与状态、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、审批持久化、模型标题与短视频脚本技能、行业包按需加载、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：
 
 ```text
 Industry: media
@@ -172,6 +173,7 @@ submit → deliverable-first routing → load only planned skills → produce �
 - **Lazy loading:** only planned skills load; missing capabilities, non-commercial licenses, or context-budget overruns stop the run with a reason.
 - **Durable approvals:** the desktop “approve and create package” action goes through the same gate; the authorization id is written into the package manifest and kept in local SQLite across restarts.
 - **Per-workspace packs:** a workspace loads only its own industry pack; requests for other industries ask for clarification instead of being misrouted.
+- **Kernel tasks on the desktop:** work items whose deliverable is titles or a short-video script get a “Generate titles” / “Generate video script” button; the producer self-checks, an independent reviewer checks, and failures are reworked automatically.
 - **Four Solo invariants** are enforced by `evals/test_solo_invariants.py`. See [ARCHITECTURE.md](ARCHITECTURE.md) and the [rules spec](docs/sprint-02-gates-spec.md).
 
 For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`.
@@ -197,7 +199,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-The Python evaluation suite has 116 cases: core routing and state, the rules layer (two gates and loader), the execution kernel and four Solo invariants, durable approvals, the model-backed title skill, lazy industry packs, the desktop baseline, and offline simulated media workflows. Expected media routing example:
+The Python evaluation suite has 126 cases: core routing and state, the rules layer (two gates and loader), the execution kernel and four Solo invariants, durable approvals, model-backed title and short-video script skills, lazy industry packs, the desktop baseline, and offline simulated media workflows. Expected media routing example:
 
 ```text
 Industry: media

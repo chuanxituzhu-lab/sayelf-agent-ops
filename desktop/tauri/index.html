@@ -104,7 +104,10 @@
         <div id="execution-panel" class="execution-panel" hidden>
           <p id="provider-target" class="subtle"></p>
           <label class="consent-row"><input id="provider-consent" type="checkbox" /> 我确认本次将需求文字和附件中提取的文字发送到上述模型地址；照片和原始文件仍留在本机。</label>
-          <button id="run-media-workflow" class="primary" type="button">生成内容与平台发布包</button>
+          <div class="result-actions">
+            <button id="run-kernel-task" class="primary" type="button" hidden>生成标题</button>
+            <button id="run-media-workflow" class="primary" type="button">生成内容与平台发布包</button>
+          </div>
           <p id="execution-message" class="message" role="status" aria-live="polite"></p>
         </div>
         <label for="result-content">可编辑成果（Markdown）</label>

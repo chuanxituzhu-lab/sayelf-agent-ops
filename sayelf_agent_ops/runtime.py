@@ -133,8 +133,13 @@ class Runtime:
     def _execute(self, wi: WorkItem) -> WorkItem:
         feedback = self._feedback.pop(wi.id, [])
         for attempt in range(1, MAX_ATTEMPTS_PER_RUN + 1):
+            # Steps run in plan order; each step sees the outputs of the steps
+            # before it in this round (e.g. a script follows the outline).
+            outputs = []
+            wi.outputs = outputs
             try:
-                outputs = [self.executor.run(step, wi, feedback) for step in wi.execution_plan.steps]
+                for step in wi.execution_plan.steps:
+                    outputs.append(self.executor.run(step, wi, feedback))
             except SkillExecutionError as error:
                 # 技能执行失败（如未授权调用远程模型、模型不可用）：停在 WORKING 交给人，
                 # 不产出、不重试、不把输入写进日志。

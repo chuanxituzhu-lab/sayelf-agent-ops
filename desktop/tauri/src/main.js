@@ -11,6 +11,10 @@ let pendingRoleId = null;
 let currentRunId = null;
 let currentResultVersion = null;
 let currentIsGeneratedDraft = false;
+let currentIsKernelResult = false;
+let currentDeliverable = null;
+// Deliverables the Agent Ops kernel runs (producer self-check + independent review).
+const kernelTasks = { "title-list": "生成标题", "video-script": "生成短视频脚本" };
 let approvedPackage = false;
 let providerConfig = { configured: false, endpoint: "", model: "" };
 let currentPack = null;
@@ -209,6 +213,9 @@ function resumeSavedWorkflow(item) {
   currentRunId = item.run_id;
   currentResultVersion = null;
   currentIsGeneratedDraft = false;
+  currentIsKernelResult = false;
+  // A resumable run belongs to the three-stage media workflow, not a kernel task.
+  currentDeliverable = null;
   approvedPackage = false;
   pendingRoleId = null;
   $("activation-prompt").hidden = true;
@@ -255,17 +262,25 @@ function providerIsLocal() {
 }
 
 function updateExecutionPanel() {
-  if (!currentWorkItemId || currentIsGeneratedDraft) return;
+  if (!currentWorkItemId || currentIsGeneratedDraft || currentIsKernelResult) return;
   const panel = $("execution-panel");
   if (!panel) return;
   panel.hidden = false;
   const button = $("run-media-workflow");
+  const kernelButton = $("run-kernel-task");
+  const kernelLabel = kernelTasks[currentDeliverable];
+  kernelButton.hidden = !kernelLabel;
+  kernelButton.textContent = kernelLabel || "";
+  // Titles have no publish package; video scripts keep the full package as a second option.
+  button.hidden = currentDeliverable === "title-list";
+  button.className = kernelLabel ? "secondary" : "primary";
   const consent = $("provider-consent");
   if (!providerConfig.configured || !providerConfig.credential_available) {
     $("provider-target").textContent = providerConfig.configured
       ? "服务信息已保存，请在“AI 服务设置”中重新输入密钥并测试连接。"
       : "先在“AI 服务设置”中填写兼容接口地址、模型和密钥。";
     button.disabled = true;
+    kernelButton.disabled = true;
     consent.disabled = true;
   } else {
     const local = providerIsLocal();
@@ -274,6 +289,7 @@ function updateExecutionPanel() {
       : `本次将把工作单文字和 OCR 提取文字发送至：${providerConfig.endpoint}（${providerConfig.model}）。原始附件不会发送。`;
     consent.disabled = local;
     button.disabled = !local && !consent.checked;
+    kernelButton.disabled = !local && !consent.checked;
     button.textContent = currentRunId ? "从失败步骤继续生成" : "生成内容与平台发布包";
   }
 }
@@ -394,6 +410,8 @@ function showResult(data) {
   currentRunId = data.run_id || null;
   currentResultVersion = data.version || null;
   currentIsGeneratedDraft = Boolean(data.platform_package);
+  currentIsKernelResult = false;
+  currentDeliverable = data.routing?.deliverable_type || null;
   approvedPackage = data.review_state === "APPROVED";
   pendingRoleId = null;
   $("activation-prompt").hidden = true;
@@ -469,6 +487,53 @@ async function runMediaWorkflow() {
   } finally {
     updateExecutionPanel();
     void refreshRecentWorkflows();
+  }
+}
+
+function showKernelResult(data) {
+  currentWorkItemId = data.workitem_id;
+  currentIsKernelResult = true;
+  currentIsGeneratedDraft = false;
+  approvedPackage = false;
+  $("result-card").hidden = false;
+  $("result-title").textContent = data.label || "成果";
+  $("result-state").textContent = "已通过自检与独立审核";
+  const rework = data.rework_count ? `，经 ${data.rework_count} 轮返工` : "";
+  $("result-summary").textContent =
+    `工作单 ${data.workitem_id} · 由产出岗位生成并自检，再由独立审核岗位检查${rework}。发布前请人工核对事实与平台规范。`;
+  $("result-content").value = data.result_content || "";
+  $("execution-panel").hidden = true;
+  $("approve-publish-package").hidden = true;
+  $("performance-panel").hidden = true;
+  renderRoles(data.roles || []);
+  setMessage("result-message", `已保存：${data.output_name}`, false);
+  $("provider-consent").checked = false;
+  $("result-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function runKernelTask() {
+  if (!currentWorkItemId || !kernelTasks[currentDeliverable] || !providerConfig.configured) return;
+  const button = $("run-kernel-task");
+  const label = kernelTasks[currentDeliverable];
+  button.disabled = true;
+  button.textContent = "正在生成并审核…";
+  setMessage("execution-message", "产出岗位生成后会先自检，再交给独立审核岗位；不合格会自动返工。", false);
+  try {
+    const result = await invoke("execute_kernel_task", {
+      workitemId: currentWorkItemId,
+      consentToProvider: !providerIsLocal() && $("provider-consent").checked,
+    });
+    if (result.code === 0) {
+      showKernelResult(result.data);
+    } else {
+      $("provider-consent").checked = false;
+      setMessage("execution-message", result.msg || `${label}没有完成。`, true);
+    }
+  } catch (error) {
+    setMessage("execution-message", typeof error === "string" ? error : `${label}没有完成，请检查模型配置和本机工作空间。`, true);
+  } finally {
+    button.textContent = label;
+    updateExecutionPanel();
   }
 }
 
@@ -614,6 +679,7 @@ $("activate-media-team").addEventListener("click", async () => {
 
 $("provider-consent").addEventListener("change", updateExecutionPanel);
 $("run-media-workflow").addEventListener("click", () => void runMediaWorkflow());
+$("run-kernel-task").addEventListener("click", () => void runKernelTask());
 $("result-content").addEventListener("input", () => {
   if (approvedPackage) {
     approvedPackage = false;

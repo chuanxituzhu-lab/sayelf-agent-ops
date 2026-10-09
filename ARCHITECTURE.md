@@ -84,7 +84,8 @@ INBOX → SCOPED → WORKING → READY → REVIEW ─┬→ APPROVED → DELIVER
 | 02 | 规则层：AcceptanceGate、按动作授权的 HumanGate、按需加载 SkillLoader（c2d7437） | 完成 |
 | 02b | 内核层：Actor / Project / Policy、扩展状态机、Executor 接口（1 条真实技能：标题生成）、独立 Review、事件日志；两道门与加载器接入 Runtime；桌面工作台与 SQLite 运行时（PR #1）并入；四条不变式全绿 | 完成 |
 | 03 | HumanGate 审批持久化到桌面 SQLite，桌面发布包确认改走同一授权门；标题生成接入模型；行业包按需加载（见 docs/sprint-03.md） | 完成 |
-| 04 | 桌面“生成标题”入口、媒体三阶段工作流迁入内核 Runtime、第二条真实技能 | 下一步 |
+| 04 | 桌面里按交付物交给内核执行（标题、短视频脚本）；第二条真实技能链：大纲 → 短视频脚本；三阶段工作流迁移暂缓（理由见 docs/sprint-04.md） | 完成 |
+| 05 | 待定：检查点机制抽入内核后再迁移三阶段工作流；更多内核技能 | 待定 |
 | 03+ | sayelf.app 公网入口（复用桌面前端，含登录鉴权） | 待定 |
 | 04+ | 记忆、Risk 分级、Connector Runtime、多人权限细化 | 待定 |
 
