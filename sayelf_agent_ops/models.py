@@ -21,6 +21,13 @@ class WorkItem:
     outputs: list[Any] = field(default_factory=list)
     history: list[dict[str, Any]] = field(default_factory=list)
     execution_plan: "ExecutionPlan | None" = None
+    # Sprint 02: every party is an actor id, never "the user".
+    owner: str | None = None
+    assignee: str | None = None
+    reviewer: str | None = None
+    approver: str | None = None
+    pending_gate: str | None = None
+    rework_count: int = 0
 
 
 @dataclass(frozen=True)

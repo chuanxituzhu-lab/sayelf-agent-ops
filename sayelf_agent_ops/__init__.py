@@ -10,6 +10,10 @@ from .registry import Registry, build_default_registry
 from .router import Router
 from .planner import MinimumPlanner, apply_routing
 from .state import StateEngine, WorkState, TransitionRejected
+from .actors import Actor, Policy, Project
+from .runtime import Runtime
+from .gates import AcceptanceGate, HumanGate, ActionKind, GateRejected
+from .loader import SkillLoader, SkillManifest
 
 __all__ = [
     "WorkItem",
@@ -26,4 +30,14 @@ __all__ = [
     "StateEngine",
     "WorkState",
     "TransitionRejected",
+    "Actor",
+    "Policy",
+    "Project",
+    "Runtime",
+    "AcceptanceGate",
+    "HumanGate",
+    "ActionKind",
+    "GateRejected",
+    "SkillLoader",
+    "SkillManifest",
 ]

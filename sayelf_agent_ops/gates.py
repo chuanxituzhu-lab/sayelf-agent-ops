@@ -32,6 +32,11 @@ def _required_output_present(workitem: WorkItem, skill: Any) -> tuple[bool, str]
     produced = set(skill.produced_outputs)
     for output in workitem.outputs:
         if isinstance(output, dict) and output.get("type") in produced:
+            # A placeholder that declares itself as such is an honest structural
+            # output (no executor wired yet); it is surfaced to review and the
+            # human gate as a placeholder, never as finished work.
+            if output.get("placeholder") is True:
+                return True, "declared-placeholder"
             if output.get("items") == [] or output.get("content") == "":
                 return False, f"EMPTY_OUTPUT:{output.get('type')}"
             return True, "ok"
@@ -194,10 +199,13 @@ def _now() -> datetime:
 
 
 class HumanGate:
-    """Solo mode needs no org/permission config: any human identifier may
-    approve. Identifiers starting with ``agent:`` are rejected, so an agent
-    can never approve its own action. Team-mode role checks plug in later via
-    ``approver_policy`` without changing this contract."""
+    """Standalone use needs no org/permission config: any human identifier
+    may approve, and identifiers starting with ``agent:`` are rejected.
+
+    Inside ``Runtime`` the authoritative check is ``approver_policy``, bound to
+    ``Project.can_decide`` (actor kind must be ``human`` and hold an approver
+    role from ``Policy``). The ``agent:`` prefix check remains only as a
+    fallback for callers that use the gate without a Project."""
 
     def __init__(
         self,

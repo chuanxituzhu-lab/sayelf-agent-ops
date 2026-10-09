@@ -10,6 +10,10 @@ class WorkState(StrEnum):
     SCOPED = "SCOPED"
     WORKING = "WORKING"
     READY = "READY"
+    REVIEW = "REVIEW"
+    REWORK = "REWORK"
+    APPROVED = "APPROVED"
+    DELIVERED = "DELIVERED"
 
 
 class TransitionRejected(RuntimeError):
@@ -20,7 +24,12 @@ _ALLOWED = {
     WorkState.INBOX: {WorkState.SCOPED},
     WorkState.SCOPED: {WorkState.WORKING},
     WorkState.WORKING: {WorkState.READY},
-    WorkState.READY: set(),
+    WorkState.READY: {WorkState.REVIEW},
+    WorkState.REVIEW: {WorkState.APPROVED, WorkState.REWORK},
+    WorkState.REWORK: {WorkState.WORKING},
+    # A human may reject at the gate, which sends the work back.
+    WorkState.APPROVED: {WorkState.DELIVERED, WorkState.REWORK},
+    WorkState.DELIVERED: set(),
 }
 
 
@@ -42,6 +51,16 @@ class StateEngine:
         if current == WorkState.WORKING and target == WorkState.READY:
             if not workitem.outputs:
                 raise TransitionRejected("REQUIRED_OUTPUT_MISSING")
+
+        if current == WorkState.READY and target == WorkState.REVIEW:
+            if not workitem.reviewer:
+                raise TransitionRejected("REVIEWER_MISSING")
+            if workitem.reviewer == workitem.assignee:
+                raise TransitionRejected("SELF_REVIEW_FORBIDDEN")
+
+        if current == WorkState.APPROVED and target == WorkState.DELIVERED:
+            if workitem.pending_gate:
+                raise TransitionRejected("HUMAN_GATE_PENDING")
 
         workitem.state = target.value
         workitem.history.append({

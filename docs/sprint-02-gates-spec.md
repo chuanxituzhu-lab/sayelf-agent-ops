@@ -1,6 +1,6 @@
 # Sprint 02 规格：验收门 · 人类授权门 · 按需加载
 
-> 状态：草案，待 Nicola 裁决合并
+> 状态：已合入 main（c2d7437，2026-10-09），Sprint 02b 已接入 Runtime，见第 7 节
 > 基线：Sprint 01（commit f343bc5），18 个测试全绿，满足 README 中“routing 与 state 测试稳定后才可加 Human Gate”的解冻条件
 > 原则：只新增，不改动 Sprint 01 的任何文件
 
@@ -84,3 +84,30 @@ Sprint 01 的状态机没有修改。两道门挂在 READY 之后，作为独立
 - 审批持久化（当前在内存中；重启后需要重新审批，这是安全的默认行为）
 - 证据链校验器（例如“数字必须带出处”）：接口已经开放，按 `validators` 注入即可
 - 把 REVIEW / AWAITING_APPROVAL / DONE 正式写入 `WorkState`
+
+## 7. Sprint 02b：接入内核（2026-10-09）
+
+### 决策记录（按 sayelf-base 构建门禁）
+
+1. 任务：把三条并行实现收敛成一条内核路径——规则层（本规格，c2d7437）、内核层（Actor/Project/Runtime，原云端会话方案，已存档）、桌面层（PR #1）。
+2. 最接近的已有能力：三者本身；试合并仅 README/.gitignore 文本冲突，测试全绿。
+3. Step 0：**Integrate**。不新建框架，不重写任何一层。
+4. 可度量差异：Solo 四条不变式进入强制测试；审批从“三套各自实现”收敛为“Policy 管谁、HumanGate 管什么”一套。
+5. 证据：`evals/test_kernel_integration.py`（K01–K07）+ 原有全部测试。
+6. 不做：JSON 存储与本地网页工作台（与 PR #1 的 SQLite、桌面应用重复，舍弃）；HumanGate 持久化（Sprint 03，接 PR #1 的 SQLite 审批表）。
+7. 回滚：本次为一个分支上的若干提交，`git revert` 即可；不涉及数据迁移。
+
+### 接线点
+
+| 位置 | 接入 |
+|---|---|
+| `Runtime.run` | 执行前 `SkillLoader.load_for_plan`，结束后 `release`；被阻断时记录 `skills-blocked` 并上报 |
+| `READY` 之后 | `AcceptanceGate.check` 作为产出者自检（事件 `self-check`，actor=产出者）；与独立审核都通过才进入 APPROVED |
+| 命中 Policy 门 | `HumanGate.request`，事件 `gate-requested` 带请求号与产出摘要 |
+| `Runtime.decide` | 先 `Project.can_decide`（谁能批），再 `HumanGate.approve` + `authorize`（批的是什么）；交付事件带授权请求号 |
+| `HumanGate.approver_policy` | 绑定 `Project.can_decide`；原 `agent:` 前缀检查保留为脱离 Project 单独使用时的兜底 |
+
+### 本次发现并修复的缺陷
+
+- 占位产出的类型取自计划步骤名（如 `wechat-adaptation`），与 SkillContract 声明的产出类型（`platform-package`）不一致。接入 AcceptanceGate 后被立即拦下；已改为取合同声明的类型。
+- 明确标记 `placeholder=true` 的产出视为“结构存在”，可以通过自检，但在审核和人工裁决中始终显示为占位，不冒充成品。

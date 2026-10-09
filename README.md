@@ -53,6 +53,22 @@ Sprint 01 已打通最小路由与规划路径：请求 → WorkItem → 路由 
 
 这是可运行的本地创作与人工发布交接闭环，不是无人值守的自媒体公司。当前没有内置模型账号或默认密钥；首次真实连接和内容质量需由使用者配置并验证。平台直发、自动排期、数据接口、视频生成和自动化经营决策尚未实现。
 
+## 执行内核（Sprint 02 / 02b）
+
+Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人项目就是只有一个人类成员的项目。
+
+```text
+提交 → 交付物路由 → 按需加载 Skill → 产出 → 产出者自检 → 独立审核 → 返工
+     → 自动交付，或停在人工裁决 → 人类批准（一次性授权）→ 交付
+```
+
+- **两道门：** 产出者先自检（AcceptanceGate），再由另一个 Agent 独立审核；产出者不能审核自己，人数为 1 也不例外。
+- **人工裁决：** `Policy` 决定谁能批，`HumanGate` 决定批的是什么——动作、目标、产出摘要绑定，一次有效，批准后改稿即失效；草稿已备、已上传、之前批过都不算授权。
+- **按需加载：** 只加载计划需要的 Skill；缺能力、非商用许可或超出上下文预算时停下并说明原因。
+- **四条 Solo 不变式**由 `evals/test_solo_invariants.py` 强制。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [规则层规格](docs/sprint-02-gates-spec.md)。
+
+作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。
+
 ## 一键安装基线
 
 普通用户安装和启动桌面应用不需要另外安装 Python、Node.js、Git、Docker、数据库或命令行工具。安装包包含 Tauri 桌面壳和冻结的 Python Core Runtime；首次启动会初始化本地目录、SQLite 元数据并运行健康检查。
@@ -74,7 +90,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-当前自动评估集包含 26 个核心路由与桌面基线用例，另含媒体执行流程的离线模拟用例。预期媒体路由示例：
+当前 Python 自动评估集共 93 个用例：核心路由与状态、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：
 
 ```text
 Industry: media
@@ -139,6 +155,23 @@ After configuring an AI-compatible endpoint, model, and key, the workbench can r
 
 This is a working local creation and human publishing handoff, not an unattended media company. There is no bundled model account or default API key; users must configure and verify a real provider. Direct platform posting, scheduling, analytics connectors, video generation, and automated business decisions are not implemented.
 
+## Execution kernel (Sprint 02 / 02b)
+
+Solo and Team share one execution path; there is no `mode` field. A solo project is simply a project with one human member.
+
+```text
+submit → deliverable-first routing → load only planned skills → produce → producer self-check
+       → independent review → rework → auto-deliver, or stop at the human gate
+       → human approval (single-use authorization) → deliver
+```
+
+- **Two gates:** the producer self-checks (AcceptanceGate), then a different agent reviews. A producer never reviews its own work, even with one human.
+- **Human gate:** `Policy` decides who may approve; `HumanGate` decides what was approved — action, target, and output digest are bound, single-use, and void if the output changes. Prepared drafts, uploads, or earlier approvals never count as authorization.
+- **Lazy loading:** only planned skills load; missing capabilities, non-commercial licenses, or context-budget overruns stop the run with a reason.
+- **Four Solo invariants** are enforced by `evals/test_solo_invariants.py`. See [ARCHITECTURE.md](ARCHITECTURE.md) and the [rules spec](docs/sprint-02-gates-spec.md).
+
+For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`.
+
 ## One-click installer baseline
 
 End users do not need to install Python, Node.js, Git, Docker, a database, or command-line tools to install and launch the desktop app. The installer bundles the Tauri shell and frozen Python Core Runtime. First launch initializes local folders and SQLite metadata, then runs a health check.
@@ -160,7 +193,7 @@ python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
 ```
 
-The automated evaluation suite includes 26 core routing and desktop-baseline cases, plus offline simulated media-workflow cases. Expected media routing example:
+The Python evaluation suite has 93 cases: core routing and state, the rules layer (two gates and loader), the execution kernel and four Solo invariants, the desktop baseline, and offline simulated media workflows. Expected media routing example:
 
 ```text
 Industry: media

@@ -10,3 +10,4 @@ build/
 /desktop/tauri/src-tauri/binaries/*
 /desktop/tauri/src-tauri/gen/
 /desktop/runtime/.venv/
+*.egg-info/
