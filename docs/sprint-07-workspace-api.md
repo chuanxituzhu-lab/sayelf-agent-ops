@@ -77,6 +77,6 @@ cd D:\Codex\skills\sayelf-agent-ops
 
 ## 5. 本次不做（Sprint 08）
 
-- 工作项持久化：成员和规则已落盘，审批记录在 SQLite；工作项本身还在进程内存里，服务重启后清空。
+- 工作项持久化：已在 Sprint 08 完成。
 - BuildCostIQ 工作台本体（新仓库，按画布 4 屏 + 生产负责人实现，只调本接口）。
 - 局域网或公网访问、正式登录（sayelf.app）。

@@ -12,10 +12,10 @@ Two entries, two audiences:
 * Workspace API (this layer) — people, through a product UI. Can submit human
   steps and decide gates, each check done by the kernel's own rules.
 
-Project membership and approval rules persist in ``<home>/workspace/project.json``.
-Approvals persist in SQLite (shared with the MCP entry). Work items live in the
-running process in this sprint; restarting the service clears them (approval
-records stay).
+Everything survives a restart: membership and approval rules in
+``<home>/workspace/project.json``, work items / human tasks / quorum progress /
+evidence in ``<home>/workspace/state.json`` (Sprint 08), approvals in SQLite
+(shared with the MCP entry).
 """
 from __future__ import annotations
 
@@ -33,6 +33,7 @@ from .gates import GateRejected
 from .models import WorkItem
 from .registry import build_registry
 from .runtime import Runtime
+from . import runtime_store
 from .service import MAX_TEXT, approval_store, default_home
 from .state import TransitionRejected, WorkState
 
@@ -85,6 +86,7 @@ class WorkspaceService:
     ):
         self.home = home or default_home()
         self.project_file = workspace_dir(self.home) / "project.json"
+        self.state_file = workspace_dir(self.home) / "state.json"
         self.registry = build_registry(packs)
         if self.project_file.exists():
             spec = json.loads(self.project_file.read_text(encoding="utf-8"))
@@ -99,11 +101,21 @@ class WorkspaceService:
             id_prefix=f"WI-{uuid.uuid4().hex[:6]}",
         )
         self._lock = threading.RLock()
+        saved = runtime_store.load(self.state_file)
+        if saved is not None:
+            try:
+                runtime_store.restore(self.runtime, saved)
+            except (KeyError, TypeError, ValueError) as error:
+                # Never start over silently: people's pending work would vanish.
+                raise WorkspaceError(f"STATE_UNREADABLE:{_code(error)}", 500) from None
         self._save_project()
 
     @property
     def project(self) -> Project:
         return self.runtime.project
+
+    def _save_state(self) -> None:
+        _write_json_atomic(self.state_file, runtime_store.snapshot(self.runtime))
 
     def _save_project(self) -> None:
         spec = self.project.to_spec()
@@ -237,7 +249,9 @@ class WorkspaceService:
                 wi = self.runtime.submit(text, submitted_by=actor_id)
             except ValueError as error:
                 raise WorkspaceError(_code(error), 422) from None
-            return self._workitem_view(self.runtime.run(wi), actor_id, detail=True)
+            wi = self.runtime.run(wi)
+            self._save_state()
+            return self._workitem_view(wi, actor_id, detail=True)
 
     def submit_task(self, actor_id: str, workitem_id: str, content: Any) -> dict[str, Any]:
         with self._lock:
@@ -255,6 +269,7 @@ class WorkspaceService:
                 raise WorkspaceError(_code(error), 409) from None
             except ValueError as error:
                 raise WorkspaceError(_code(error), 422) from None
+            self._save_state()
             return self._workitem_view(wi, actor_id, detail=True)
 
     def decide(self, actor_id: str, workitem_id: str, approve: Any, reason: Any = "") -> dict[str, Any]:
@@ -273,6 +288,7 @@ class WorkspaceService:
                 raise WorkspaceError(_code(error), 403) from None
             except (TransitionRejected, GateRejected) as error:
                 raise WorkspaceError(_code(error), 409) from None
+            self._save_state()
             return self._workitem_view(wi, actor_id, detail=True)
 
     # ------------------------------------------------------------------ members
@@ -298,6 +314,7 @@ class WorkspaceService:
             except ValueError as error:
                 raise WorkspaceError(_code(error), 409) from None
             self._save_project()
+            self._save_state()
             return self._actor_view(actor)
 
     def remove_member(self, actor_id: str, member_id: str) -> dict[str, Any]:
@@ -312,4 +329,5 @@ class WorkspaceService:
             except ValueError as error:
                 raise WorkspaceError(_code(error), 409) from None
             self._save_project()
+            self._save_state()
             return self._actor_view(actor)
