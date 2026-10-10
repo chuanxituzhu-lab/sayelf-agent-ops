@@ -86,6 +86,7 @@ def _routes(service: WorkspaceService) -> list[Route]:
     return [
         r("GET", "/me", lambda a, b: service.me(a)),
         r("GET", "/project", lambda a, b: service.project_view(a)),
+        r("GET", "/capabilities", lambda a, b: service.capabilities(a)),
         r("GET", "/project/events", lambda a, b: {"events": service.project_events(a)}),
         r("POST", "/members", lambda a, b: service.add_member(a, b), 201),
         r("DELETE", f"/members/{seg}", lambda a, b, m: service.remove_member(a, m)),
@@ -255,7 +256,16 @@ def main(argv: list[str] | None = None) -> int:
         print("还没有工作区。先运行：python -m sayelf_agent_ops.workspace_api init --spec <项目规格.json>",
               file=sys.stderr)
         return 2
-    service = WorkspaceService(home=home)
+    model = None
+    if args.command == "serve":
+        from .providers.config import ModelConfigError, explain, load_model
+
+        try:
+            model = load_model(home)
+        except ModelConfigError as error:
+            print(f"模型配置有问题：{explain(error)}。", file=sys.stderr)
+            return 5
+    service = WorkspaceService(home=home, model=model)
     tokens = TokenStore(home)
 
     if args.command == "issue-token":
@@ -281,6 +291,12 @@ def main(argv: list[str] | None = None) -> int:
 
     server = make_server(service, tokens, args.port, tuple(args.allow_origin), log=True)
     print(f"工作区接口已启动：http://{LOOPBACK}:{args.port}/{API_VERSION}/health  （Ctrl+C 停止）")
+    desc = service.model.describe()
+    if desc["configured"]:
+        allowed = "已允许" if (desc["remote_allowed"] or not desc["remote"]) else "未允许，远程模型不会被调用"
+        print(f"模型：{desc['model']} @ {desc['endpoint']}（{'远程' if desc['remote'] else '本机'}，{allowed}）")
+    else:
+        print("模型：未配置。内置技能可用，其余技能返回如实标记的占位产出。")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

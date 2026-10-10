@@ -83,6 +83,7 @@ class WorkspaceService:
         home: Path | None = None,
         packs: tuple[str, ...] | None = None,
         handlers: dict[str, Any] | None = None,
+        model: Any | None = None,
     ):
         self.home = home or default_home()
         self.project_file = workspace_dir(self.home) / "project.json"
@@ -93,10 +94,17 @@ class WorkspaceService:
         elif spec is None:
             raise WorkspaceError("NO_PROJECT_SPEC", 500)
         project = Project.from_spec(spec, registry=self.registry)
+        # Model port: with a model configured, skills run on it directly —
+        # no AI host platform needed. Without one, placeholders stay honest.
+        from .providers.config import ModelSetup, model_handlers
+
+        self.model = model or ModelSetup(None, False, False, False, "none")
+        model_skill_handlers, fallback = model_handlers(self.model, self.registry)
+        all_handlers = {**model_skill_handlers, **(handlers or {})}
         self.runtime = Runtime(
             project,
             registry=self.registry,
-            executor=BuiltinExecutor(handlers or {}, registry=self.registry),
+            executor=BuiltinExecutor(all_handlers, registry=self.registry, fallback=fallback),
             approval_store=approval_store(self.home),
             id_prefix=f"WI-{uuid.uuid4().hex[:6]}",
         )
@@ -208,6 +216,11 @@ class WorkspaceService:
                 "policy": spec["policy"],
                 "packs": list(self.registry.loaded_industries),
             }
+
+    def capabilities(self, actor_id: str) -> dict[str, Any]:
+        with self._lock:
+            self.member(actor_id)
+            return {"packs": list(self.registry.loaded_industries), "model": self.model.describe()}
 
     def project_events(self, actor_id: str) -> list[dict[str, Any]]:
         with self._lock:

@@ -22,6 +22,16 @@ def is_local_endpoint(endpoint: str) -> bool:
         return False
 
 
+def _json_text(content: str) -> str:
+    """The JSON object in a reply, tolerating a ```json fence or leading prose."""
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else ""
+        text = text.rsplit("```", 1)[0]
+    start, end = text.find("{"), text.rfind("}")
+    return text[start:end + 1] if start != -1 and end > start else text
+
+
 class OpenAICompatibleProvider:
     """Minimal, provider-neutral adapter for OpenAI-compatible chat endpoints."""
 
@@ -29,6 +39,9 @@ class OpenAICompatibleProvider:
     adapter_version = ADAPTER_VERSION
 
     def __init__(self, endpoint: str, model: str, api_key: str, timeout: int = 90, opener=None):
+        # A model on this machine (Ollama, LM Studio, vLLM) usually needs no key.
+        if not api_key and endpoint and is_local_endpoint(endpoint):
+            api_key = "local"
         if not endpoint or not model or not api_key:
             raise ProviderError("MODEL_NOT_CONFIGURED")
         self.endpoint = endpoint.rstrip("/")
@@ -39,16 +52,28 @@ class OpenAICompatibleProvider:
         self.last_usage = None
 
     def complete_json(self, system_prompt: str, user_payload: dict) -> dict:
+        try:
+            return self._complete(system_prompt, user_payload, json_mode=True)
+        except ProviderError as error:
+            # Some OpenAI-compatible services reject ``response_format``; ask
+            # again once without it and read the JSON from the reply text.
+            if error.code != "MODEL_REJECTED_REQUEST":
+                raise
+            return self._complete(system_prompt, user_payload, json_mode=False)
+
+    def _complete(self, system_prompt: str, user_payload: dict, json_mode: bool) -> dict:
         self.last_usage = None
-        body = json.dumps({
+        request_body = {
             "model": self.model,
             "temperature": 0.4,
-            "response_format": {"type": "json_object"},
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
             ],
-        }, ensure_ascii=False).encode("utf-8")
+        }
+        if json_mode:
+            request_body["response_format"] = {"type": "json_object"}
+        body = json.dumps(request_body, ensure_ascii=False).encode("utf-8")
         if len(body) > 250_000:
             raise ProviderError("MODEL_INPUT_TOO_LARGE")
         request = Request(
@@ -83,7 +108,7 @@ class OpenAICompatibleProvider:
                     and 0 <= usage[key] <= 1_000_000_000
                 }
             content = envelope["choices"][0]["message"]["content"]
-            result = json.loads(content)
+            result = json.loads(_json_text(content))
         except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
             raise ProviderError("MODEL_RESPONSE_INVALID") from None
         if not isinstance(result, dict):

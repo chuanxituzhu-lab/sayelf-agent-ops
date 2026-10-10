@@ -61,6 +61,8 @@ python -m sayelf_agent_ops.approve_cli deny <请求号> --reason "原因"
 | `SAYELF_MODEL_ENDPOINT` / `SAYELF_MODEL_NAME` / `SAYELF_MODEL_API_KEY` | OpenAI 兼容模型；不配置则标题用本地模板、其余技能返回如实标记的占位 | 未配置 |
 | `SAYELF_MODEL_ALLOW_REMOTE` | 设为 `1` 才允许调用非本机模型 | 不允许 |
 
+也可以用 `python -m sayelf_agent_ops.model_cli configure` 写一次配置，环境变量优先。详见 [model-port.md](model-port.md)。
+
 模型同意的差异：桌面应用是**每次运行前**确认；MCP 入口由调用方 Agent 发起，Agent 不能代你同意，所以改为由你在配置里**一次性**开启 `SAYELF_MODEL_ALLOW_REMOTE=1`。不开启时，远程模型一次都不会被调用。
 
 ## 5. 决策记录（按 sayelf-base 构建门禁）

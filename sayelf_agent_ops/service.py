@@ -49,23 +49,23 @@ class AgentOpsService:
         provider: Any | None = None,
         remote: bool = False,
         allow_remote: bool = False,
+        generic_skills: bool = True,
     ):
         self.home = home or default_home()
         self.owner = owner or owner_id()
         self.store = approval_store(self.home)
         self.registry = build_registry(packs)
-        handlers: dict[str, Any] = {}
-        if provider is not None:
-            from .skills.video_llm import make_model_handlers
+        # Consent for a remote model is given once, by the human, in the
+        # server configuration (allow_remote) — never by the agent.
+        from .providers.config import ModelSetup, model_handlers
 
-            # Consent for a remote model is given once, by the human, in the
-            # server configuration (SAYELF_MODEL_ALLOW_REMOTE=1) — never by the agent.
-            handlers = make_model_handlers(provider, remote=remote, consent=allow_remote)
+        handlers, fallback = model_handlers(
+            ModelSetup(provider, remote, allow_remote, generic_skills, "args"), self.registry)
         self.model = getattr(provider, "model", None)
         self.runtime = Runtime(
             Project.solo(self.owner, registry=self.registry),
             registry=self.registry,
-            executor=BuiltinExecutor(handlers, registry=self.registry),
+            executor=BuiltinExecutor(handlers, registry=self.registry, fallback=fallback),
             approval_store=self.store,
             id_prefix=f"WI-{uuid.uuid4().hex[:6]}",
         )
@@ -74,20 +74,17 @@ class AgentOpsService:
     def from_env(cls) -> "AgentOpsService":
         packs_env = os.environ.get("SAYELF_PACKS", "").strip()
         packs = tuple(p.strip() for p in packs_env.split(",") if p.strip()) or None
-        provider = None
-        remote = False
-        endpoint = os.environ.get("SAYELF_MODEL_ENDPOINT", "").strip()
-        if endpoint:
-            from .providers.openai_compatible import OpenAICompatibleProvider, is_local_endpoint
+        from .providers.config import ModelConfigError, ModelSetup, load_model
 
-            provider = OpenAICompatibleProvider(
-                endpoint,
-                os.environ.get("SAYELF_MODEL_NAME", "").strip(),
-                os.environ.get("SAYELF_MODEL_API_KEY", ""),
-            )
-            remote = not is_local_endpoint(endpoint)
-        return cls(packs=packs, provider=provider, remote=remote,
-                   allow_remote=os.environ.get("SAYELF_MODEL_ALLOW_REMOTE") == "1")
+        try:
+            setup, error = load_model(default_home()), None
+        except ModelConfigError as exc:
+            # Start anyway (MCP hosts would only see a dead server) and say why.
+            setup, error = ModelSetup(None, False, False, False, "none"), str(exc)
+        svc = cls(packs=packs, provider=setup.provider, remote=setup.remote,
+                  allow_remote=setup.consent, generic_skills=setup.generic_skills)
+        svc.model_error = error
+        return svc
 
     # ------------------------------------------------------------------ views
     def _summary(self, wi: WorkItem, with_events: bool = False) -> dict[str, Any]:
@@ -130,6 +127,7 @@ class AgentOpsService:
             "loaded_packs": list(self.registry.loaded_industries),
             "available_packs": list(available_industries()),
             "model": self.model,
+            "model_error": getattr(self, "model_error", None),
             "owner": self.owner,
             "human_approval": "python -m sayelf_agent_ops.approve_cli (interactive terminal only)",
         }

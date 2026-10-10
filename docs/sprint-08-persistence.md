@@ -1,6 +1,6 @@
 # Sprint 08：工作区重启不丢工作
 
-> 状态：完成。Python 测试 185 个全绿（新增 7 个）。
+> 状态：完成。同一 Sprint 还完成了模型接口（[model-port.md](model-port.md)）。Python 测试 195 个全绿。
 
 ## 解决什么
 

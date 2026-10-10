@@ -98,11 +98,15 @@ def _title_writing(step: PlanStep, wi: WorkItem, feedback: list[str]) -> dict[st
 
 
 class BuiltinExecutor:
-    def __init__(self, handlers: dict[str, SkillHandler] | None = None, registry: Any | None = None):
+    def __init__(self, handlers: dict[str, SkillHandler] | None = None, registry: Any | None = None,
+                 fallback: SkillHandler | None = None):
         self.handlers: dict[str, SkillHandler] = {"media.title-writing": _title_writing}
         if handlers:
             self.handlers.update(handlers)
         self.registry = registry
+        # Runs skills that have no dedicated handler (e.g. the generic model
+        # executor). Without it they return honestly marked placeholders.
+        self.fallback = fallback
 
     def _declared_type(self, step: PlanStep) -> str:
         # Placeholders must carry the output type the SkillContract declares,
@@ -117,6 +121,8 @@ class BuiltinExecutor:
         handler = self.handlers.get(step.skill)
         if handler is not None:
             return handler(step, workitem, feedback)
+        if self.fallback is not None:
+            return self.fallback(step, workitem, feedback)
         return {
             "type": self._declared_type(step),
             "skill": step.skill,

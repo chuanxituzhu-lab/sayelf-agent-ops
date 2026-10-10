@@ -88,7 +88,7 @@ INBOX → SCOPED → WORKING → READY → REVIEW ─┬→ APPROVED → DELIVER
 | 05 | MCP 入口：服务层 + 官方 SDK，Agent 可运行与交付、不能批准；终端人工批准 CLI（见 docs/mcp.md） | 完成 |
 | 06 | Team / Hybrid 内核层：人担任岗位、多人裁决（quorum）、成员加入与退出、团队规格；BuildCostIQ 施工项目部模板（见 docs/sprint-06-team.md） | 完成 |
 | 07 | 工作区接口（本机 HTTP，人凭令牌登录，可提交人工任务与裁决）；生产负责人与进度/工程量联签；定位：Agent Ops 是引擎，产品用自己的工作台接入（见 docs/sprint-07-workspace-api.md） | 完成 |
-| 08 | 工作项持久化（重启后待办、联签进度、自检记录、证据日志原样恢复，见 docs/sprint-08-persistence.md）；首个产品工作台 BuildCostIQ 在独立仓库接入 | 完成 |
+| 08 | 工作项持久化（见 docs/sprint-08-persistence.md）；模型接口：不依赖 AI 平台直连模型，通用执行器让每个技能都能由模型起草（见 docs/model-port.md）；首个产品工作台 BuildCostIQ 在独立仓库接入 | 完成 |
 | 09 | 待办通知；局域网多人访问与正式登录（sayelf.app） | 下一步 |
 | 03+ | sayelf.app 公网入口（复用桌面前端，含登录鉴权） | 待定 |
 | 04+ | 记忆、Risk 分级、Connector Runtime、多人权限细化 | 待定 |
