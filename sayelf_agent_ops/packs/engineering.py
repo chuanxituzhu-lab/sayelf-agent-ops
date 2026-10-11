@@ -23,7 +23,7 @@ def build_pack() -> IndustryPack:
         RoleContract(
             id="engineering.technical",
             industry="engineering",
-            name="Technical / 技术工程",
+            name="Technical / 技术负责人",
             responsibility="负责图纸、技术变化与技术判断。",
             owned_outputs=("drawing-diff", "change-object"),
             allowed_skills=("engineering.drawing-version-compare",),
@@ -31,17 +31,26 @@ def build_pack() -> IndustryPack:
         RoleContract(
             id="engineering.production",
             industry="engineering",
-            name="Production / 生产管理",
+            name="Site Engineer / 施工员",
             responsibility="负责计划、现场生产与进度。",
             owned_outputs=("progress-review", "site-event"),
             allowed_skills=("engineering.progress-tracking",),
         ),
         RoleContract(
+            id="engineering.document-control",
+            industry="engineering",
+            name="Document Control / 资料员",
+            responsibility="负责施工资料收集、分类、报验资料整理与证据包归档；不代替专业岗位作技术或质量结论。",
+            owned_outputs=("evidence-package",),
+            allowed_skills=("engineering.evidence-package",),
+            forbidden_scope=("engineering-approval", "quality-acceptance"),
+        ),
+        RoleContract(
             id="engineering.qa-records",
             industry="engineering",
-            name="QA / Records / 质量资料",
-            responsibility="负责试验、检验、质量与资料完整性。",
-            owned_outputs=("test-report-check", "evidence-package"),
+            name="Testing / QA / 试验员/质量员",
+            responsibility="兼任试验与质量资料岗位，负责试验报告检查和质量记录完整性；不替代技术负责人审批。",
+            owned_outputs=("test-report-check",),
             allowed_skills=("engineering.test-report-check",),
         ),
         RoleContract(
@@ -61,6 +70,7 @@ def build_pack() -> IndustryPack:
         skill("engineering.quantity-review", "engineering.commercial", "工程量复核", ("quantity-data",), ("quantity-review",)),
         skill("engineering.drawing-version-compare", "engineering.technical", "图纸版本比对", ("drawing-a", "drawing-b"), ("drawing-diff",)),
         skill("engineering.progress-tracking", "engineering.production", "进度跟踪", ("site-data",), ("progress-review",)),
+        skill("engineering.evidence-package", "engineering.document-control", "资料整理与证据包归档", ("project-documents", "site-records"), ("evidence-package",)),
         skill("engineering.test-report-check", "engineering.qa-records", "试验报告检查", ("test-report",), ("test-report-check",)),
         skill("engineering.hazard-register", "engineering.hse", "安全隐患整理", ("site-observation",), ("hazard-record",)),
     )
@@ -99,6 +109,13 @@ def build_pack() -> IndustryPack:
             75,
             "progress-review", "engineering", "E1", "engineering.production",
             ("engineering.progress-tracking",), "最终交付物是生产进度核查结果。",
+        ),
+        RouteRule(
+            "engineering.evidence-package",
+            lambda text: any(term in text for term in ("资料员", "资料归档", "竣工资料", "报验资料", "资料整理", "资料组卷", "证据包", "档案整理")),
+            72,
+            "evidence-package", "engineering", "E1", "engineering.document-control",
+            ("engineering.evidence-package",), "最终交付物是施工资料整理或证据包归档。",
         ),
         RouteRule(
             "engineering.test-report-check",

@@ -40,7 +40,10 @@
       "professional-brief": "cost-release",
       "platform-package": "publish",
       "progress-review": "progress-release",
-      "quantity-review": "quantity-release"
+      "quantity-review": "quantity-release",
+      "evidence-package": "technical-quality-release",
+      "test-report-check": "technical-quality-release",
+      "hazard-record": "safety-release"
     },
     "gate_approver_roles": {
       "publish": [
@@ -54,11 +57,19 @@
       ],
       "progress-release": [
         "production-lead",
-        "project-manager"
+        "cost-lead"
       ],
       "quantity-release": [
         "production-lead",
         "cost-lead"
+      ],
+      "technical-quality-release": [
+        "engineering.technical",
+        "cost-lead"
+      ],
+      "safety-release": [
+        "production-lead",
+        "engineering.technical"
       ]
     }
   }

@@ -75,6 +75,11 @@ class RoutingEvalTests(unittest.TestCase):
     def test_r09_test_report(self):
         self.assert_role("检查这一批混凝土试验报告", "engineering.qa-records")
 
+    def test_engineering_documents_route_to_document_controller(self):
+        decision = self.assert_role("整理竣工资料并按目录组卷归档", "engineering.document-control")
+        self.assertEqual("evidence-package", decision.deliverable_type)
+        self.assertEqual(("engineering.evidence-package",), decision.selected_skills)
+
     def test_r10_hazard(self):
         self.assert_role("整理施工现场安全隐患记录", "engineering.hse")
 
@@ -94,6 +99,31 @@ class RoutingEvalTests(unittest.TestCase):
 
     def test_article_about_software_stays_in_media(self):
         self.assert_role("写一篇关于软件开发的公众号文章", "media.content-planner")
+
+    def test_software_frontend_work_routes_to_frontend_engineer(self):
+        d = self.assert_role("修复 WebUI 上传按钮无响应和页面布局错位", "software.frontend")
+        self.assertEqual(("software.frontend-implementation",), d.selected_skills)
+        self.assertEqual("frontend-change", d.deliverable_type)
+
+    def test_software_backend_work_routes_to_backend_engineer(self):
+        d = self.assert_role("修复 Draftloom 后端 API 的 access_token 刷新逻辑", "software.backend")
+        self.assertEqual(("software.backend-implementation",), d.selected_skills)
+
+    def test_software_test_work_routes_to_independent_qa(self):
+        d = self.assert_role("为 Draftloom 前端代码补充自动化回归测试", "software.qa")
+        self.assertEqual(("software.test-and-review",), d.selected_skills)
+
+    def test_software_runtime_work_routes_to_platform_operations(self):
+        d = self.assert_role("检查本机 WebUI 服务启动失败并完善健康检查", "software.platform-operations")
+        self.assertEqual(("software.runtime-operations",), d.selected_skills)
+
+    def test_explicit_frontend_and_test_request_orders_independent_qa_after_change(self):
+        d = self.assert_role("实现 WebUI 界面并添加自动化回归测试", "software.frontend")
+        self.assertEqual({"frontend-change", "test-report"}, set(d.requested_deliverables))
+        self.assertEqual(
+            ("software.frontend", "software.qa"),
+            tuple(dict.fromkeys(role for role, _ in d.workflow_steps)),
+        )
 
     # X01-X05 confusion cases
     def test_x01_engineering_topic_wechat_article(self):
@@ -119,6 +149,11 @@ class RoutingEvalTests(unittest.TestCase):
             "统计公众号运营成本并分析表现",
             "media.growth-operator",
         )
+
+    def test_media_growth_operator_remains_owner_of_publishing_and_performance(self):
+        for request in ("整理公众号草稿发布准备", "分析公众号数据表现并复盘"):
+            with self.subTest(request=request):
+                self.assert_role(request, "media.growth-operator")
 
     def test_x05_cross_industry_is_split_not_super_agent(self):
         d = self.assert_role(

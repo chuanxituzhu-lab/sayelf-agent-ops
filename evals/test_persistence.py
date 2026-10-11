@@ -33,10 +33,10 @@ class RestartTests(unittest.TestCase):
         view = ws.get_workitem("human.pm", wi["id"])
         roles = {r["role"]: r["approved_by"] for r in view["gate"]["roles"]}
         self.assertEqual("human.prod-lead", roles["production-lead"])
-        self.assertIsNone(roles["project-manager"])
+        self.assertIsNone(roles["cost-lead"])
         with self.assertRaises(WorkspaceError):  # still one person, one role
             ws.decide("human.prod-lead", wi["id"], True)
-        self.assertEqual("DELIVERED", ws.decide("human.pm", wi["id"], True)["state"])
+        self.assertEqual("DELIVERED", ws.decide("human.cost-lead", wi["id"], True)["state"])
 
     def test_p02_pending_human_task_resumes_after_restart(self):
         wi = self.ws.submit("human.pm", DRAWING)

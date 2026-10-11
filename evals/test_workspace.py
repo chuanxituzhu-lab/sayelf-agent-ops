@@ -37,16 +37,33 @@ class WorkspaceServiceTests(unittest.TestCase):
         self.assertEqual(["production-lead"], members["human.prod-lead"]["roles"])
         self.assertTrue(members["human.prod-lead"]["active"])
 
-    def test_w02_progress_review_needs_production_lead_and_pm(self):
+    def test_w02_progress_review_needs_production_lead_and_cost_lead(self):
         wi = self.ws.submit("human.pm", PROGRESS)
         self.assertEqual("engineering.production", wi["role"])
         self.assertEqual("APPROVED", wi["state"])
-        self.assertEqual({"production-lead", "project-manager"}, {r["role"] for r in wi["gate"]["roles"]})
+        self.assertEqual({"production-lead", "cost-lead"}, {r["role"] for r in wi["gate"]["roles"]})
         self.assertEqual([wi["id"]], [a["id"] for a in self.ws.my_approvals("human.prod-lead")])
-        self.assertEqual([], self.ws.my_approvals("human.cost-lead"))
+        self.assertEqual([wi["id"]], [a["id"] for a in self.ws.my_approvals("human.cost-lead")])
         self.ws.decide("human.prod-lead", wi["id"], True)
-        done = self.ws.decide("human.pm", wi["id"], True)
+        done = self.ws.decide("human.cost-lead", wi["id"], True)
         self.assertEqual("DELIVERED", done["state"])
+
+    def test_w02a_document_and_test_deliverables_need_technical_and_cost_leads(self):
+        for request, deliverable in (
+            ("整理竣工资料并按目录组卷归档", "evidence-package"),
+            ("检查这一批混凝土试验报告", "test-report-check"),
+        ):
+            with self.subTest(deliverable=deliverable):
+                wi = self.ws.submit("human.pm", request)
+                self.assertEqual(deliverable, wi["deliverable_type"])
+                self.assertEqual({"engineering.technical", "cost-lead"},
+                                 {r["role"] for r in wi["gate"]["roles"]})
+
+    def test_w02b_safety_deliverables_need_production_and_technical_leads(self):
+        wi = self.ws.submit("human.pm", "整理施工现场安全隐患记录")
+        self.assertEqual("hazard-record", wi["deliverable_type"])
+        self.assertEqual({"production-lead", "engineering.technical"},
+                         {r["role"] for r in wi["gate"]["roles"]})
 
     def test_w03_quantity_review_needs_production_lead_and_cost_lead(self):
         wi = self.ws.submit("human.pm", QUANTITY)
@@ -163,7 +180,7 @@ class WorkspaceHttpTests(unittest.TestCase):
         self.call("POST", f"/workitems/{wi['id']}/decision", "human.prod-lead", {"approve": True})
         status, again, _ = self.call("POST", f"/workitems/{wi['id']}/decision", "human.prod-lead", {"approve": True})
         self.assertEqual(403, status)
-        status, done, _ = self.call("POST", f"/workitems/{wi['id']}/decision", "human.pm", {"approve": True})
+        status, done, _ = self.call("POST", f"/workitems/{wi['id']}/decision", "human.cost-lead", {"approve": True})
         self.assertEqual((200, "DELIVERED"), (status, done["state"]))
 
     def test_a04_approve_must_be_a_real_boolean(self):
