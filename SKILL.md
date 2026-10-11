@@ -39,11 +39,13 @@ python D:\Codex\skills\sayelf-agent-ops\scripts\route.py --run "把已确认的�
 
 ## 硬规则
 
-### Codex 宿主的软件岗位包
+### Codex 宿主的共享岗位路由
 
-软件工作优先调用 `route_task`，读取 `host_execution.steps`，由 Codex 在目标仓库执行；这条路径不调用 `run_task` 或模型提供方。岗位包包含通用软件实现、前端、后端、测试与平台运维，按需选择。执行契约及证据要求见 `docs/software-host-execution.md`。
+各行业任务调用 `route_task`，读取 `host_execution.steps` 后由 Codex 按已登记岗位和技能执行；这条路径不调用 `run_task` 或模型提供方。软件执行契约及证据要求见 `docs/software-host-execution.md`。
 
-路由状态 `planned` 不表示成果完成；必须报告真实变更、自检、验证及独立审核证据。没有独立审核者时标记 `review_pending`，不能用同一执行者切换岗位名称代替独立审核。
+岗位按行业交付物设计，不照搬传统编制。可把多个已登记的执行技能组合为一个 AI 岗位，按技能分别路由；多项交付按输入/输出依赖排序，保留独立测试、复核和人工批准。用户提出岗位合并、增补或叫法时，先调用 `list_registered_roles`，再调用 `reconcile_role_suggestion`。只有同业技能、非重复产出、每技能正例与反例检查通过，后台才写入本地岗位组合；不创建新技能、工具或权限。细则见 `docs/role-update-local.md`。
+
+路由状态 `planned` 不表示成果完成；必须报告真实成果、自检、验证及独立审核证据。没有独立审核者时标记 `review_pending`。
 
 1. 交付物优先，不按主题词；按当前行业包登记的技能和结果匹配最少岗位。只有输入明确提出多项交付时才合并规则，并按技能输入/输出依赖排序；跨行业任务拆成专业子任务，不造超级 Agent。
 2. 产出者不能审核自己；人数为 1 也不例外。

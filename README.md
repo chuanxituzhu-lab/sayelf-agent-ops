@@ -76,6 +76,8 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。任何支持 MCP 的 Agent 可通过本机 MCP 入口调用内核，Agent 不能批准，需人在终端批准，见 [docs/mcp.md](docs/mcp.md)。
 
+**宿主 Agent 接入建议：** 若由 Codex 等宿主完成实际工作，调用 `route_task` 获取岗位、技能和执行步骤，再由宿主执行并保留验证证据；无需调用 `run_task`。行业岗位建议可通过 MCP 本地核验、查询和撤销，不会改写共享行业包，也不要求新模型或编排框架。详见 [MCP 接入说明](docs/mcp.md)。
+
 ## 一键安装基线
 
 普通用户安装和启动桌面应用不需要另外安装 Python、Node.js、Git、Docker、数据库或命令行工具。安装包包含 Tauri 桌面壳和冻结的 Python Core Runtime；首次启动会初始化本地目录、SQLite 元数据并运行健康检查。
@@ -186,6 +188,8 @@ submit → deliverable-first routing → load only planned skills → produce �
 - **Four Solo invariants** are enforced by `evals/test_solo_invariants.py`. See [ARCHITECTURE.md](ARCHITECTURE.md) and the [rules spec](docs/sprint-02-gates-spec.md).
 
 For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`. Any MCP-capable agent can call the kernel through the local MCP entry; agents cannot approve — a human approves in a terminal. See [docs/mcp.md](docs/mcp.md).
+
+**Host-agent integration:** When Codex or another host performs the actual work, call `route_task` for roles, skills, and execution steps, then execute and retain validation evidence in the host. This path does not call `run_task`. Role suggestions can be locally verified, inspected, and revoked through MCP without rewriting shared packs or requiring a model/framework. See the [MCP integration guide](docs/mcp.md).
 
 ## One-click installer baseline
 

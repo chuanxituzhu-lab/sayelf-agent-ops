@@ -33,8 +33,23 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 | `get_task` | 任务状态、产出和只追加的事件日志（证据链） |
 | `list_pending_approvals` | 本会话中等待人工决定的交付 |
 | `deliver_task` | 你批准后完成交付；未决定返回 `AWAITING_HUMAN_APPROVAL`；被驳回则退回返工 |
+| `list_registered_roles` | 查看当前行业中已注册的岗位、技能、交付物和边界 |
+| `reconcile_role_suggestion` | 用本地正反例核验用户岗位建议，并将已有技能组合为可撤销的本机岗位覆盖层 |
+| `role_updates_status` | 查看本机已应用/已撤销的岗位调整及其核验证据 |
+| `revoke_role_update` | 撤销一个本机岗位覆盖层并追加审计记录 |
 
 默认注册媒体和土木工程行业包；`route_task` 只返回岗位建议。
+
+### 由 Codex 等宿主执行实际工作
+
+当宿主 Agent 负责实际产出时，采用以下薄集成方式：
+
+1. 调用 `capabilities` 了解内核与行业能力。
+2. 调用 `route_task` 获取岗位、技能、交付物、执行步骤及缺口。
+3. 由宿主 Agent 按步骤执行，并在宿主侧保留产出与验证证据。
+4. 需要岗位调整时，先调用 `list_registered_roles`，再提交含每项技能正例和负例的 `reconcile_role_suggestion`；只影响本机路由，支持查询与撤销。
+
+这种接法不调用 `run_task`；`run_task` 仍可供希望由 Agent Ops 内核执行其已接入技能的客户端选择。MCP 不会自动给宿主增加工具权限，也不会把本机岗位建议发送到网络。
 
 **没有** approve / deny / decide 工具。
 
@@ -71,7 +86,7 @@ python -m sayelf_agent_ops.approve_cli deny <请求号> --reason "原因"
 2. 最接近的已有能力：内核 Runtime、两道门、SQLite 审批存储、`scripts/route.py`、Skill 入口；官方 MCP Python SDK。
 3. Step 0：**Integrate**。服务层 + 官方 SDK 薄封装；不自写协议。
 4. 可度量差异：一次注册，任何 MCP 客户端可用；Agent 无法批准高风险交付。
-5. 证据：`evals/test_mcp_entry.py`（S01–S10 服务与批准规则、M01–M02 真实 stdio MCP 握手），在 mcp 1.30 / 2.2 / 2.3 下均通过；未安装 mcp 时 M 系列自动跳过。全部 138 个测试通过。
+5. 证据：`evals/test_mcp_entry.py` 覆盖服务与批准规则及真实 stdio MCP 握手；角色组合和撤销由 `evals/test_role_updates.py` 覆盖。MCP 为可选依赖，未安装时协议测试自动跳过。
 6. 依赖：`mcp` 为可选依赖，只有 MCP 入口需要；内核仍为纯标准库。
 7. 本地优先：只用 stdio，不开端口；审批记录在本机。
 8. 回滚：删除 Codex `config.toml` 中的 `[mcp_servers.sayelf-agent-ops]`（或用安装时的备份还原），`claude mcp remove sayelf-agent-ops --scope user`。

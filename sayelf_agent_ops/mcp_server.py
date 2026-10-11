@@ -15,7 +15,9 @@ from .service import AgentOpsService
 INSTRUCTIONS = (
     "Sayelf Agent Ops 执行内核：按交付物把任务分派给专业岗位，产出者自检、独立审核、自动返工；"
     "发布等高风险交付必须等人类在终端批准（approve_cli），你无权也不应尝试批准。"
-    "交付物不明确时（UNROUTABLE_DELIVERABLE）请向用户澄清，不要硬套。"
+    "岗位按行业的交付物与能力组合，不照搬传统组织架构；执行能力可合并，产出者与独立复核必须分离。"
+    "用户提出岗位建议时，先查已注册岗位技能，再通过 reconcile_role_suggestion 核验每项能力的路由正反例；"
+    "只可复用已登记技能，不得虚构技能、工具或权限。交付物不明确时（UNROUTABLE_DELIVERABLE）请向用户澄清，不要硬套。"
 )
 
 
@@ -41,6 +43,41 @@ def build_server(service: AgentOpsService | None = None):
     def route_task(text: str) -> dict[str, Any]:
         """Decide which role and skills own this task, by its deliverable. Does not execute anything."""
         return svc.route(text)
+
+    @server.tool()
+    def list_registered_roles() -> dict[str, Any]:
+        """List the roles and skills available to validate a user role suggestion."""
+        return svc.registered_roles()
+
+    @server.tool()
+    def reconcile_role_suggestion(
+        suggested_name: str,
+        responsibility: str,
+        source_skill_ids: list[str],
+        aliases_by_skill: dict[str, list[str]],
+        positive_examples_by_skill: dict[str, list[str]],
+        negative_examples: list[str],
+    ) -> dict[str, Any]:
+        """Verify a compact role bundle against registered skills and per-skill route examples.
+
+        Passing suggestions reuse existing capabilities, preserve reviewer separation and apply locally.
+        """
+        return svc.reconcile_role_suggestion(
+            suggested_name=suggested_name, responsibility=responsibility,
+            source_skill_ids=source_skill_ids, aliases_by_skill=aliases_by_skill,
+            positive_examples_by_skill=positive_examples_by_skill,
+            negative_examples=negative_examples,
+        )
+
+    @server.tool()
+    def role_updates_status() -> dict[str, Any]:
+        """List locally applied user role suggestions and their verification evidence."""
+        return svc.role_updates_status()
+
+    @server.tool()
+    def revoke_role_update(update_id: str) -> dict[str, Any]:
+        """Revoke a local role alias update and restore the prior registered routing behavior."""
+        return svc.revoke_role_update(update_id)
 
     @server.tool()
     def run_task(text: str, goal: str = "") -> dict[str, Any]:

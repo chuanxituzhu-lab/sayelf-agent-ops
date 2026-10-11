@@ -150,7 +150,8 @@ class McpProtocolTests(unittest.TestCase):
     def test_m01_tools_listed_and_none_can_approve(self):
         tools, _ = self.session_call([])
         self.assertEqual({"capabilities", "route_task", "run_task", "get_task",
-                          "list_pending_approvals", "deliver_task"}, tools)
+                          "list_pending_approvals", "deliver_task", "list_registered_roles",
+                          "reconcile_role_suggestion", "role_updates_status", "revoke_role_update"}, tools)
 
     def test_m02_run_then_deliver_requires_human(self):
         _, results = self.session_call([

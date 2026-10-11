@@ -145,6 +145,12 @@ class Router:
         highest_priority = max(rule.priority for rule in matches)
         best_matches = [rule for rule in matches if rule.priority == highest_priority]
         if len(best_matches) != 1:
-            rule_ids = ",".join(rule.id for rule in best_matches)
-            raise ValueError(f"AMBIGUOUS_ROUTING_RULE:{rule_ids}")
+            # One consolidated AI role may own several distinct capabilities.
+            # Keep the normal single-deliverable behavior deterministic; when
+            # the request explicitly joins deliverables, _compose_rules adds
+            # the other matching skills and orders them by their contracts.
+            if (len({rule.role for rule in best_matches}) != 1
+                    or any(not rule.id.startswith("user-role.") for rule in best_matches)):
+                rule_ids = ",".join(rule.id for rule in best_matches)
+                raise ValueError(f"AMBIGUOUS_ROUTING_RULE:{rule_ids}")
         return best_matches[0]

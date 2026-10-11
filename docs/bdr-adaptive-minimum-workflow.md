@@ -7,17 +7,17 @@
 4. **Measurable difference:** A single-destination request uses only the registered skill route it needs; explicit compound requests include all matching deliverables, ordered by declared input/output dependencies, and exclude duplicate skills/roles.
 5. **Success evidence:** Golden cases for simple, compound, ambiguous, and unsupported requests assert minimum distinct role count, complete declared output coverage, dependency order, independent QA, and no off-catalog role invention.
 6. **Minimum Core:** Existing registry as capability catalog; pack-declared bounded workflow selection; deterministic dependency ordering and assembly validation; role-attributed workflow and outputs; explicit blocked/clarify responses; local run evidence.
-7. **Plugin boundary:** Each industry pack continues to own its roles, skills, outputs, and domain handlers; model/provider remains replaceable; no role is created at runtime.
+7. **Plugin boundary:** Each industry pack remains the canonical source of roles, skills, outputs, and domain handlers. A locally reconciled overlay may combine existing same-industry skills, but cannot modify pack definitions or add executable capability; model/provider remains replaceable.
 8. **Local-first:** Input persistence, matching, dependency planning, validation, results, and evidence remain local; no model call is added to workflow planning.
 9. **Data classification:** Request and attachments are `Unknown` and handled as `Sensitive`; credentials are `Restricted` and never included in prompts; generated results are local until user export.
 10. **Public release:** Yes; the user explicitly requested a GitHub update. Publish only the reviewed source, tests, and documentation classified `Public`; exclude user inputs, local outputs, and credentials.
 11. **External transfer:** Push the reviewed `Public` repository diff to the configured GitHub origin. No task data or credentials are included. The existing per-run model consent still governs later content/code generation.
-12. **State/check:** `received → classified → assembled → validated → planned → executed → reviewed → closed`; unknown scope or unsupported capability returns `CLARIFY/BLOCKED`; only verified required results can close the run. Re-evaluate on scope, result, provider, consent, or catalog change.
+12. **State/check:** `received → classified → assembled → validated → planned → executed → reviewed → closed`; unknown scope or unsupported capability returns `CLARIFY/BLOCKED`; only verified required results can close the run. User-suggested role bundles require per-skill positive/negative route checks and are applied only as reversible local overlays. Re-evaluate on scope, result, provider, consent, or catalog change.
 13. **Epistemic labels:** User-specified outputs are facts; model-suggested decomposition is a proposal; workflow validation is a fact about structural coverage only; generated work and tests are complete only when their own acceptance evidence passes.
-14. **Evolution / rollback:** Additive assembly layer with versioned plan metadata; preserve prior local edits and data; revert by disabling adaptive assembly and retaining existing deterministic routes.
+14. **Evolution / rollback:** Additive assembly layer and local role overlays with versioned plan/evidence metadata; preserve prior local edits and data; revert a role overlay through its revoke operation, or disable adaptive assembly while retaining canonical routes.
 15. **WebUI:** Required; the existing task entry and result panels are the natural place to show the minimum role chain, missing inputs, status, and artifacts.
 16. **Simplest implementation:** Reuse current Python core and provider adapter; add bounded planner/validator and thread the existing per-run consent through intake; no agent framework or new dependency.
-17. **Explicitly not built:** Runtime role creation, unrestricted agent spawning, uncontrolled group chat/loops, external publication, automatic source/project mutation, or claims of task closure without result evidence.
+17. **Explicitly not built:** New runtime executable skills/tools, unrestricted agent spawning, uncontrolled group chat/loops, external publication, automatic source/project mutation, or claims of task closure without result evidence.
 
 ## Principle profile
 

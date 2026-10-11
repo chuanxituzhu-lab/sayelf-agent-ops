@@ -7,7 +7,7 @@ from .helpers import skill
 
 CHANGE_ACTIONS = ("实现", "开发", "修复", "修改", "优化", "重构", "构建", "添加", "创建", "搭建", "升级", "改造", "完善")
 FRONTEND_ACTIONS = tuple(action for action in CHANGE_ACTIONS if action != "完善")
-FRONTEND_TERMS = ("前端", "webui", "ui", "界面", "网页", "页面", "组件", "css", "react", "vue", "按钮", "交互", "响应式")
+FRONTEND_TERMS = ("前端", "webui", "ui", "界面", "网页", "页面", "预览", "组件", "css", "react", "vue", "按钮", "交互", "响应式")
 BACKEND_TERMS = ("后端", "服务端", "api", "接口", "数据库", "sql", "鉴权", "认证", "token", "服务逻辑")
 SOFTWARE_CONTEXT = (
     "软件", "代码", "程序", "应用", "网站", "webui", "前端", "后端", "api", "接口",
@@ -127,7 +127,7 @@ def build_pack() -> IndustryPack:
         RouteRule(
             "software.backend-change",
             _is_backend_change,
-            160,
+            165,
             "backend-change", "software", "S2", "software.backend",
             ("software.backend-implementation",),
             "最终交付物是后端、API、认证或数据层代码变更。",
@@ -136,7 +136,7 @@ def build_pack() -> IndustryPack:
         RouteRule(
             "software.frontend-change",
             _is_frontend_change,
-            150,
+            165,
             "frontend-change", "software", "S2", "software.frontend",
             ("software.frontend-implementation",),
             "最终交付物是前端界面、交互或响应式布局变更。",

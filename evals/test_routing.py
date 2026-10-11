@@ -105,6 +105,14 @@ class RoutingEvalTests(unittest.TestCase):
         self.assertEqual(("software.frontend-implementation",), d.selected_skills)
         self.assertEqual("frontend-change", d.deliverable_type)
 
+    def test_software_preview_fix_wins_over_wechat_article_context(self):
+        d = self.assert_role("修复 Draftloom 公众号文章实时预览未同步问题", "software.frontend")
+        self.assertEqual("frontend-change", d.deliverable_type)
+
+    def test_software_api_fix_wins_over_wechat_article_context(self):
+        d = self.assert_role("修复 Draftloom 公众号文章发布 API 的 access_token 刷新逻辑", "software.backend")
+        self.assertEqual("backend-change", d.deliverable_type)
+
     def test_software_backend_work_routes_to_backend_engineer(self):
         d = self.assert_role("修复 Draftloom 后端 API 的 access_token 刷新逻辑", "software.backend")
         self.assertEqual(("software.backend-implementation",), d.selected_skills)

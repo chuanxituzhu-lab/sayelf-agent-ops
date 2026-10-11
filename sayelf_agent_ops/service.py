@@ -10,12 +10,13 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .actors import Project
+from .actors import Actor, Project
 from .approvals_sqlite import SQLiteApprovalStore
 from .executor import BuiltinExecutor
 from .gates import GateRejected
 from .models import WorkItem
 from .registry import available_industries, build_registry
+from .role_updates import RoleUpdateStore
 from .router import Router
 from .runtime import Runtime
 from .state import TransitionRejected
@@ -54,7 +55,9 @@ class AgentOpsService:
         self.home = home or default_home()
         self.owner = owner or owner_id()
         self.store = approval_store(self.home)
+        self.role_updates = RoleUpdateStore(self.home / "role-updates.sqlite3")
         self.registry = build_registry(packs)
+        self.role_updates.load_into(self.registry)
         # Consent for a remote model is given once, by the human, in the
         # server configuration (allow_remote) — never by the agent.
         from .providers.config import ModelSetup, model_handlers
@@ -139,24 +142,54 @@ class AgentOpsService:
             decision = Router(self.registry).route(WorkItem(id="ROUTE", input=text, goal=text, deliverable=text))
         except ValueError as error:
             return _error(str(error).split(":")[0])
-        result = {"ok": True, "decision": asdict(decision)}
-        if decision.industry == "software":
-            from .planner import MinimumPlanner
+        from .planner import MinimumPlanner
 
-            plan = MinimumPlanner(self.registry).build(WorkItem(id="ROUTE", input=text), decision)
-            result["host_execution"] = {
+        plan = MinimumPlanner(self.registry).build(WorkItem(id="ROUTE", input=text), decision)
+        return {
+            "ok": True,
+            "decision": asdict(decision),
+            "host_execution": {
                 "executor": "codex", "status": "planned", "execute_tool": None,
                 "steps": [asdict(step) for step in plan.steps],
                 "instructions": [
-                    "Codex reads the target repository and acceptance criteria, then performs only authorized changes locally.",
-                    "Do not call run_task or a model provider for this workflow.",
-                    "Record changed files, actual verification commands, exit codes and results; label unrun checks not_run.",
-                    "Producer self-check and an independent review are required; a role label alone does not establish reviewer independence.",
+                    "Codex performs only the minimum listed skills, using the industry-specific role contracts; one AI role may own multiple ordered steps.",
+                    "Do not call run_task or a model provider for this host workflow.",
+                    "Record changed files or deliverables and actual verification evidence; mark unrun checks not_run.",
+                    "Producer self-check and independent review are required; a role label alone does not establish reviewer independence.",
                     "If an independent reviewer is unavailable, report review_pending; do not claim the loop is complete.",
                     "Publishing, deployment and other gated external actions require specific human authorization.",
                 ],
                 "required_evidence": ["changed_files", "verification", "producer_self_check", "independent_review", "limitations"],
-            }
+            },
+        }
+
+    def reconcile_role_suggestion(self, **suggestion: Any) -> dict[str, Any]:
+        """Verify and locally apply a user role backed by a registered skill."""
+        result = self.role_updates.reconcile(self.registry, **suggestion)
+        if result.get("ok") and result.get("status") == "applied":
+            role_id = result["role_id"]
+            self.runtime.project.members.append(Actor(
+                id=f"agent.{role_id}", kind="agent", roles=(role_id,),
+                name=result["suggested_name"],
+            ))
+        return result
+
+    def registered_roles(self) -> dict[str, Any]:
+        return {"ok": True, "roles": [
+            {"id": role.id, "industry": role.industry, "name": role.name,
+             "responsibility": role.responsibility, "outputs": list(role.owned_outputs),
+             "skills": list(role.allowed_skills), "forbidden_scope": list(role.forbidden_scope)}
+            for role in self.registry.roles.values()
+        ]}
+
+    def role_updates_status(self) -> dict[str, Any]:
+        return self.role_updates.list_updates()
+
+    def revoke_role_update(self, update_id: str) -> dict[str, Any]:
+        result = self.role_updates.revoke(self.registry, update_id)
+        if result.get("ok") and result.get("role_id"):
+            actor_id = f"agent.{result['role_id']}"
+            self.runtime.project.members[:] = [m for m in self.runtime.project.members if m.id != actor_id]
         return result
 
     def run(self, text: str, goal: str | None = None) -> dict[str, Any]:
