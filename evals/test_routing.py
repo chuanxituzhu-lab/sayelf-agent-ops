@@ -121,6 +121,18 @@ class RoutingEvalTests(unittest.TestCase):
         d = self.assert_role("为 Draftloom 前端代码补充自动化回归测试", "software.qa")
         self.assertEqual(("software.test-and-review",), d.selected_skills)
 
+    def test_sayelf_agent_ops_self_assessment_routes_to_existing_qa(self):
+        d = self.assert_role(
+            "自我评估 Sayelf Agent Ops：检查路由、安全门和交付证据规则，给出评估报告",
+            "software.qa",
+        )
+        self.assertEqual(("software.test-and-review",), d.selected_skills)
+        self.assertEqual("test-report", d.deliverable_type)
+
+    def test_unrelated_self_assessment_is_still_unroutable(self):
+        with self.assertRaisesRegex(ValueError, "^UNROUTABLE_DELIVERABLE"):
+            self.route("自我评估今年的个人工作满意度")
+
     def test_software_runtime_work_routes_to_platform_operations(self):
         d = self.assert_role("检查本机 WebUI 服务启动失败并完善健康检查", "software.platform-operations")
         self.assertEqual(("software.runtime-operations",), d.selected_skills)

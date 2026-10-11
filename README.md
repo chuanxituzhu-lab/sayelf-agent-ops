@@ -38,7 +38,7 @@ Sayelf Agent Ops 面向一人公司和小团队，目标是让专业工作可以
 
 - **通用 Core：** WorkItem、确定性 Router、最小 Planner、Role / Skill Registry 和 State Engine。
 - **首个行业落地：** 自媒体公司工作流，Sprint 01 已纳入选题和内容策划岗位、技能及路由示例。
-- **行业边界：** 媒体、工程与软件岗位、技能和路由规则拆分为可注册的 Pack 模块；通用 Router 读取 Registry 中的规则。软件岗位由 Codex 宿主按路由计划执行，需提供验证和独立审核证据；完整说明见 [软件宿主执行契约](docs/software-host-execution.md)。
+- **行业边界：** 媒体、工程与软件岗位、技能和路由规则拆分为可注册的 Pack 模块；默认 MCP 能力包括这三个包。通用 Router 读取 Registry 中的规则。软件岗位由 Codex 宿主按路由计划执行，需提供验证和独立审核证据；完整说明见 [软件宿主执行契约](docs/software-host-execution.md)。
 - **最少岗位闭环：** 用户输入工作内容后，系统从当前行业包已注册技能中匹配岗位；单一交付按依赖组合，明确的复合交付覆盖每项结果并去掉重复技能/岗位。
 - **本地优先：** 请求、附件、OCR、工作流状态和成果默认留在本机；应用不启动网络服务或发送遥测。只有用户配置模型并逐次同意后，文字才会发送至所选模型服务。
 
@@ -150,7 +150,7 @@ Business request
 - **General Core:** WorkItem, deterministic Router, minimum Planner, Role / Skill Registry, and State Engine.
 - **First vertical:** self-media company workflows. Sprint 01 already includes sample roles, skills, and routing for topic selection and content planning.
 - **Adaptive minimum staffing:** single deliverables use their registered skill chain; explicit compound requests are combined by pack rules, ordered by declared input/output dependencies, and deduplicated.
-- **Industry boundary:** media and engineering roles, skills, and routing rules live in separately registerable Pack modules; the general Router reads rules from the local Registry. External pack discovery is not implemented. Engineering currently produces a local professional workplan; engineering execution handlers are not yet connected.
+- **Industry boundary:** media, engineering, and software roles, skills, and routing rules live in separately registerable Pack modules; the default MCP capability exposes all three. The general Router reads rules from the local Registry. External pack discovery is not implemented. Engineering currently produces a local professional workplan; engineering execution handlers are not yet connected.
 - **Local-first:** requests, attachments, OCR, workflow state, and outputs stay on-device by default. The app starts no network service and sends no telemetry. Text leaves the device only after the user configures a model and consents to each run.
 
 ## Current implementation

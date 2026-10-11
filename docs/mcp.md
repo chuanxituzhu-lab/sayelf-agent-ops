@@ -38,7 +38,9 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 | `role_updates_status` | 查看本机已应用/已撤销的岗位调整及其核验证据 |
 | `revoke_role_update` | 撤销一个本机岗位覆盖层并追加审计记录 |
 
-默认注册媒体和土木工程行业包；`route_task` 只返回岗位建议。
+默认加载媒体、工程和软件三个包；`capabilities` 会返回当前进程实际加载的包。更新本地代码后需重启 MCP 宿主，并检查 `loaded_packs` 与 `available_packs`，避免旧进程或旧安装目录造成版本错位。`route_task` 只返回岗位建议。
+
+对 Sayelf Agent Ops 本身进行“自我评估 / 自评 / 系统自检 / 路由探测”时，`route_task` 应转到已有 `software.qa` / `software.test-and-review`，交付物是测试或评估报告；这只代表分工建议，不代表评估已执行或系统已获生产认证。其他主题的自评不会因此泛化路由。
 
 ### 由 Codex 等宿主执行实际工作
 

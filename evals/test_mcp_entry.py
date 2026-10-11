@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import io
+import json
 import os
 import sys
 import tempfile
@@ -130,7 +131,8 @@ class McpProtocolTests(unittest.TestCase):
 
         params = StdioServerParameters(
             command=sys.executable, args=["-m", "sayelf_agent_ops.mcp_server"], cwd=str(ROOT),
-            env={**os.environ, "SAYELF_AGENT_OPS_HOME": str(self.home), "PYTHONPATH": str(ROOT)},
+            env={**os.environ, "SAYELF_AGENT_OPS_HOME": str(self.home),
+                 "SAYELF_PACKS": "", "PYTHONPATH": str(ROOT)},
         )
 
         async def go():
@@ -161,6 +163,18 @@ class McpProtocolTests(unittest.TestCase):
         self.assertIn("media.content-planner", self.text(results[0]))
         self.assertIn("approve_cli approve", self.text(results[1]))
         self.assertIn('"APPROVED"', self.text(results[1]).replace("'", '"'))
+
+    def test_m03_local_mcp_exposes_software_pack_and_routes_self_assessment(self):
+        _, results = self.session_call([
+            ("capabilities", {}),
+            ("route_task", {"text": "自我评估 Sayelf Agent Ops：检查路由、安全门和交付证据规则，给出评估报告"}),
+        ])
+        capabilities = json.loads(self.text(results[0]))
+        route = json.loads(self.text(results[1]))
+        self.assertEqual(set(capabilities["available_packs"]), set(capabilities["loaded_packs"]))
+        self.assertIn("software", capabilities["loaded_packs"])
+        self.assertEqual("software.qa", route["decision"]["selected_role"])
+        self.assertEqual(["software.test-and-review"], route["decision"]["selected_skills"])
 
 
 if __name__ == "__main__":

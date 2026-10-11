@@ -33,7 +33,13 @@ def _is_backend_change(text: str) -> bool:
 
 def _is_software_test(text: str) -> bool:
     test_intent = ("测试", "验证", "回归", "qa", "test", "质量检查", "测试覆盖率")
-    return _has_any(text, test_intent) and _has_any(text, SOFTWARE_CONTEXT)
+    system_assessment = (
+        _has_any(text, ("自我评估", "自评", "系统自检", "路由探测", "设计审阅"))
+        and _has_any(text, ("sayelf", "agent ops", "agent-ops", "智能体底座"))
+    )
+    return system_assessment or (
+        _has_any(text, test_intent) and _has_any(text, SOFTWARE_CONTEXT)
+    )
 
 
 def _is_platform_operation(text: str) -> bool:
