@@ -42,6 +42,8 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 
 对 Sayelf Agent Ops 本身进行“自我评估 / 自评 / 系统自检 / 路由探测”时，`route_task` 应转到已有 `software.qa` / `software.test-and-review`，交付物是测试或评估报告；这只代表分工建议，不代表评估已执行或系统已获生产认证。其他主题的自评不会因此泛化路由。
 
+本地 stdio 到宿主执行的验证记录见 [Self-assessment host-run evidence](evidence/self-assessment-host-run-2026-10-11.md)；独立复核仍单独标记，不能由同一执行者代替。
+
 ### 由 Codex 等宿主执行实际工作
 
 当宿主 Agent 负责实际产出时，采用以下薄集成方式：
