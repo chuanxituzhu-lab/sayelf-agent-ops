@@ -139,7 +139,25 @@ class AgentOpsService:
             decision = Router(self.registry).route(WorkItem(id="ROUTE", input=text, goal=text, deliverable=text))
         except ValueError as error:
             return _error(str(error).split(":")[0])
-        return {"ok": True, "decision": asdict(decision)}
+        result = {"ok": True, "decision": asdict(decision)}
+        if decision.industry == "software":
+            from .planner import MinimumPlanner
+
+            plan = MinimumPlanner(self.registry).build(WorkItem(id="ROUTE", input=text), decision)
+            result["host_execution"] = {
+                "executor": "codex", "status": "planned", "execute_tool": None,
+                "steps": [asdict(step) for step in plan.steps],
+                "instructions": [
+                    "Codex reads the target repository and acceptance criteria, then performs only authorized changes locally.",
+                    "Do not call run_task or a model provider for this workflow.",
+                    "Record changed files, actual verification commands, exit codes and results; label unrun checks not_run.",
+                    "Producer self-check and an independent review are required; a role label alone does not establish reviewer independence.",
+                    "If an independent reviewer is unavailable, report review_pending; do not claim the loop is complete.",
+                    "Publishing, deployment and other gated external actions require specific human authorization.",
+                ],
+                "required_evidence": ["changed_files", "verification", "producer_self_check", "independent_review", "limitations"],
+            }
+        return result
 
     def run(self, text: str, goal: str | None = None) -> dict[str, Any]:
         if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:

@@ -114,6 +114,7 @@ class Registry:
 PACK_MODULES: dict[str, str] = {
     "media": "sayelf_agent_ops.packs.media",
     "engineering": "sayelf_agent_ops.packs.engineering",
+    "software": "sayelf_agent_ops.packs.software",
 }
 
 
