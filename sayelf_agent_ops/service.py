@@ -20,6 +20,12 @@ from .role_updates import RoleUpdateStore
 from .router import Router
 from .runtime import Runtime
 from .state import TransitionRejected
+from .workflow_contract import (
+    REQUIRED_EXECUTION_EVIDENCE,
+    build_workflow_contract,
+    validate_host_evidence,
+    validate_workflow_contract,
+)
 
 DEFAULT_OWNER = "human.owner"
 MAX_TEXT = 20_000
@@ -145,9 +151,32 @@ class AgentOpsService:
         from .planner import MinimumPlanner
 
         plan = MinimumPlanner(self.registry).build(WorkItem(id="ROUTE", input=text), decision)
+        workflow_contract = build_workflow_contract(text, decision, plan, self.registry)
+        workflow_validation = validate_workflow_contract(workflow_contract)
+        evidence_template = {
+            "schema": "host-execution-evidence-v1",
+            "status": "not_run",
+            "source_revision": "host-must-record",
+            "route_digest": "host-must-record",
+            "steps": [],
+            "changed_files": [],
+            "verification": [],
+            "producer_self_check": {"status": "not_run"},
+            "independent_review": {"status": "not_run"},
+            "limitations": ["route_task only creates a plan; Codex has not executed it."],
+        }
         return {
             "ok": True,
             "decision": asdict(decision),
+            "workflow_contract": workflow_contract,
+            "workflow_validation": workflow_validation,
+            "host_execution_evidence": {
+                "schema": evidence_template["schema"],
+                "status": evidence_template["status"],
+                "required_fields": list(REQUIRED_EXECUTION_EVIDENCE),
+                "template": evidence_template,
+                "validation": validate_host_evidence(evidence_template),
+            },
             "host_execution": {
                 "executor": "codex", "status": "planned", "execute_tool": None,
                 "steps": [asdict(step) for step in plan.steps],
@@ -159,9 +188,17 @@ class AgentOpsService:
                     "If an independent reviewer is unavailable, report review_pending; do not claim the loop is complete.",
                     "Publishing, deployment and other gated external actions require specific human authorization.",
                 ],
-                "required_evidence": ["changed_files", "verification", "producer_self_check", "independent_review", "limitations"],
+                "required_evidence": list(REQUIRED_EXECUTION_EVIDENCE),
             },
         }
+
+    def validate_workflow_plan(self, contract: Any) -> dict[str, Any]:
+        """Validate a workflow contract without executing it or persisting input."""
+        return validate_workflow_contract(contract)
+
+    def validate_host_execution_evidence(self, evidence: Any) -> dict[str, Any]:
+        """Validate Codex host evidence; a pending review is never success."""
+        return validate_host_evidence(evidence)
 
     def reconcile_role_suggestion(self, **suggestion: Any) -> dict[str, Any]:
         """Verify and locally apply a user role backed by a registered skill."""

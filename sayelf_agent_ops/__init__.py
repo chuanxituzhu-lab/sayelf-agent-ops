@@ -14,6 +14,7 @@ from .actors import Actor, Policy, Project
 from .runtime import Runtime
 from .gates import AcceptanceGate, HumanGate, ActionKind, GateRejected
 from .loader import SkillLoader, SkillManifest
+from .workflow_contract import build_workflow_contract, validate_host_evidence, validate_workflow_contract
 
 __all__ = [
     "WorkItem",
@@ -41,4 +42,7 @@ __all__ = [
     "GateRejected",
     "SkillLoader",
     "SkillManifest",
+    "build_workflow_contract",
+    "validate_workflow_contract",
+    "validate_host_evidence",
 ]

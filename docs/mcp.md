@@ -29,6 +29,8 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 |---|---|
 | `capabilities` | 已加载的行业包、配置的模型、人工批准方式 |
 | `route_task` | 只判断该由哪个岗位、哪些技能负责，不执行 |
+| `validate_workflow_plan` | 校验 `route_task` 返回的分工合同、工具边界、复核分离、循环退出和停止条件 |
+| `validate_host_execution_evidence` | 校验 Codex 本地执行证据；缺少独立复核时保持 `review_pending` |
 | `run_task` | 完整执行：路由 → 产出 → 产出者自检 → 独立审核 → 返工；结果为已交付，或停在人工裁决 |
 | `get_task` | 任务状态、产出和只追加的事件日志（证据链） |
 | `list_pending_approvals` | 本会话中等待人工决定的交付 |
@@ -38,7 +40,7 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 | `role_updates_status` | 查看本机已应用/已撤销的岗位调整及其核验证据 |
 | `revoke_role_update` | 撤销一个本机岗位覆盖层并追加审计记录 |
 
-默认加载媒体、工程和软件三个包；`capabilities` 会返回当前进程实际加载的包。更新本地代码后需重启 MCP 宿主，并检查 `loaded_packs` 与 `available_packs`，避免旧进程或旧安装目录造成版本错位。`route_task` 只返回岗位建议。
+默认加载媒体、工程和软件三个包；`capabilities` 会返回当前进程实际加载的包。更新本地代码后需重启 MCP 宿主，并检查 `loaded_packs` 与 `available_packs`，避免旧进程或旧安装目录造成版本错位。`route_task` 返回岗位建议、`workflow_contract` 和只读校验结果，但仍不代表已执行。
 
 对 Sayelf Agent Ops 本身进行“自我评估 / 自评 / 系统自检 / 路由探测”时，`route_task` 应转到已有 `software.qa` / `software.test-and-review`，交付物是测试或评估报告；这只代表分工建议，不代表评估已执行或系统已获生产认证。其他主题的自评不会因此泛化路由。
 
@@ -50,8 +52,9 @@ powershell -ExecutionPolicy Bypass -File D:\Codex\skills\sayelf-agent-ops\script
 
 1. 调用 `capabilities` 了解内核与行业能力。
 2. 调用 `route_task` 获取岗位、技能、交付物、执行步骤及缺口。
-3. 由宿主 Agent 按步骤执行，并在宿主侧保留产出与验证证据。
-4. 需要岗位调整时，先调用 `list_registered_roles`，再提交含每项技能正例和负例的 `reconcile_role_suggestion`；只影响本机路由，支持查询与撤销。
+3. 调用 `validate_workflow_plan`（或检查路由返回的同名结果），确认计划仍是 `planned`，且工具边界、独立复核和停止条件完整。
+4. 由宿主 Agent 按步骤执行，并在宿主侧保留产出与验证证据；执行后调用 `validate_host_execution_evidence`，不能把 `review_pending` 当成完成。
+5. 需要岗位调整时，先调用 `list_registered_roles`，再提交含每项技能正例和负例的 `reconcile_role_suggestion`；只影响本机路由，支持查询与撤销。
 
 这种接法不调用 `run_task`；`run_task` 仍可供希望由 Agent Ops 内核执行其已接入技能的客户端选择。MCP 不会自动给宿主增加工具权限，也不会把本机岗位建议发送到网络。
 

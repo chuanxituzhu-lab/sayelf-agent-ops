@@ -10,7 +10,7 @@ Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗�
 
 > **最少岗位，专业闭环。**
 
-[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md)
+[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md) · [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md)
 
 ## 下载最新版本
 
@@ -41,6 +41,7 @@ Sayelf Agent Ops 面向一人公司和小团队，目标是让专业工作可以
 - **行业边界：** 媒体、工程与软件岗位、技能和路由规则拆分为可注册的 Pack 模块；默认 MCP 能力包括这三个包。通用 Router 读取 Registry 中的规则。软件岗位由 Codex 宿主按路由计划执行，需提供验证和独立审核证据；完整说明见 [软件宿主执行契约](docs/software-host-execution.md)。
 - **最少岗位闭环：** 用户输入工作内容后，系统从当前行业包已注册技能中匹配岗位；单一交付按依赖组合，明确的复合交付覆盖每项结果并去掉重复技能/岗位。
 - **本地优先：** 请求、附件、OCR、工作流状态和成果默认留在本机；应用不启动网络服务或发送遥测。只有用户配置模型并逐次同意后，文字才会发送至所选模型服务。
+- **宿主执行合同：** `route_task` 同时返回机器可读的 `workflow_contract`、分工合规校验和宿主证据模板。单一步骤保持一个 `agent-as-tool`，明确依赖的多步骤才使用 `sequential`；计划状态不会伪装成已执行成果。Codex 可在本地执行后调用 `validate_host_execution_evidence`，缺少独立复核会保持 `review_pending`。详见 [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md)。
 
 ## 当前实现范围
 
@@ -76,7 +77,7 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。任何支持 MCP 的 Agent 可通过本机 MCP 入口调用内核，Agent 不能批准，需人在终端批准，见 [docs/mcp.md](docs/mcp.md)。
 
-**宿主 Agent 接入建议：** 若由 Codex 等宿主完成实际工作，调用 `route_task` 获取岗位、技能和执行步骤，再由宿主执行并保留验证证据；无需调用 `run_task`。行业岗位建议可通过 MCP 本地核验、查询和撤销，不会改写共享行业包，也不要求新模型或编排框架。详见 [MCP 接入说明](docs/mcp.md)。
+**宿主 Agent 接入建议：** 若由 Codex 等宿主完成实际工作，调用 `route_task` 获取岗位、技能、执行合同和步骤，再由宿主执行并保留验证证据；无需调用 `run_task`。行业岗位建议可通过 MCP 本地核验、查询和撤销，不会改写共享行业包，也不要求新模型或编排框架。详见 [MCP 接入说明](docs/mcp.md)。
 
 ## 一键安装基线
 
@@ -189,7 +190,7 @@ submit → deliverable-first routing → load only planned skills → produce �
 
 For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`. Any MCP-capable agent can call the kernel through the local MCP entry; agents cannot approve — a human approves in a terminal. See [docs/mcp.md](docs/mcp.md).
 
-**Host-agent integration:** When Codex or another host performs the actual work, call `route_task` for roles, skills, and execution steps, then execute and retain validation evidence in the host. This path does not call `run_task`. Role suggestions can be locally verified, inspected, and revoked through MCP without rewriting shared packs or requiring a model/framework. See the [MCP integration guide](docs/mcp.md).
+**Host-agent integration:** When Codex or another host performs the actual work, call `route_task` for roles, skills, the workflow contract, and execution steps, then execute and retain validation evidence in the host. This path does not call `run_task`; missing independent review stays `review_pending`. Role suggestions can be locally verified, inspected, and revoked through MCP without rewriting shared packs or requiring a model/framework. See the [MCP integration guide](docs/mcp.md).
 
 ## One-click installer baseline
 

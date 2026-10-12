@@ -17,7 +17,8 @@ INSTRUCTIONS = (
     "发布等高风险交付必须等人类在终端批准（approve_cli），你无权也不应尝试批准。"
     "岗位按行业的交付物与能力组合，不照搬传统组织架构；执行能力可合并，产出者与独立复核必须分离。"
     "用户提出岗位建议时，先查已注册岗位技能，再通过 reconcile_role_suggestion 核验每项能力的路由正反例；"
-    "只可复用已登记技能，不得虚构技能、工具或权限。交付物不明确时（UNROUTABLE_DELIVERABLE）请向用户澄清，不要硬套。"
+    "只可复用已登记技能，不得虚构技能、工具或权限。route_task 返回的 workflow_contract 只是 Codex 宿主的计划，必须先校验并由宿主记录真实证据；"
+    "交付物不明确时（UNROUTABLE_DELIVERABLE）请向用户澄清，不要硬套。"
 )
 
 
@@ -41,8 +42,18 @@ def build_server(service: AgentOpsService | None = None):
 
     @server.tool()
     def route_task(text: str) -> dict[str, Any]:
-        """Decide which role and skills own this task, by its deliverable. Does not execute anything."""
+        """Route a deliverable and return a validated Codex workflow contract. Does not execute anything."""
         return svc.route(text)
+
+    @server.tool()
+    def validate_workflow_plan(contract: dict[str, Any]) -> dict[str, Any]:
+        """Validate a workflow contract's role boundaries, evidence and stop rules without executing it."""
+        return svc.validate_workflow_plan(contract)
+
+    @server.tool()
+    def validate_host_execution_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+        """Validate Codex's local execution evidence; missing independent review stays pending."""
+        return svc.validate_host_execution_evidence(evidence)
 
     @server.tool()
     def list_registered_roles() -> dict[str, Any]:

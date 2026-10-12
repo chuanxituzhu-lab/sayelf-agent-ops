@@ -32,6 +32,7 @@ from .executor import BuiltinExecutor
 from .gates import GateRejected
 from .models import WorkItem
 from .registry import build_registry
+from .role_updates import RoleUpdateStore
 from .runtime import Runtime
 from . import runtime_store
 from .service import MAX_TEXT, approval_store, default_home
@@ -89,6 +90,11 @@ class WorkspaceService:
         self.project_file = workspace_dir(self.home) / "project.json"
         self.state_file = workspace_dir(self.home) / "state.json"
         self.registry = build_registry(packs)
+        # The product workbench must see the same locally verified role
+        # overlays as the MCP/service entry.  Loading the overlay is local and
+        # reversible; it never invents a skill or permission.
+        self.role_updates = RoleUpdateStore(self.home / "role-updates.sqlite3")
+        self.role_updates.load_into(self.registry)
         if self.project_file.exists():
             spec = json.loads(self.project_file.read_text(encoding="utf-8"))
         elif spec is None:

@@ -11,6 +11,8 @@ from sayelf_agent_ops.models import WorkItem
 from sayelf_agent_ops.registry import build_registry
 from sayelf_agent_ops.role_updates import RoleUpdateStore
 from sayelf_agent_ops.router import Router
+from sayelf_agent_ops.workspace import WorkspaceService
+from sayelf_agent_ops.actors import Project
 
 
 class RoleUpdateTests(unittest.TestCase):
@@ -151,6 +153,19 @@ class RoleUpdateTests(unittest.TestCase):
         self.assertEqual("ROLE_UPDATE_PERSISTENCE_FAILED", result["error"])
         self.assertFalse(any(role_id.startswith("custom.") for role_id in self.registry.roles))
         self.assertFalse(any(rule.id.startswith("user-role.") for rule in self.registry.route_rules))
+
+    def test_workspace_entry_loads_the_same_verified_overlay(self):
+        from sayelf_agent_ops.service import AgentOpsService
+
+        service = AgentOpsService(home=self.home, packs=("software",))
+        result = service.reconcile_role_suggestion(**self.software_proposal())
+        self.assertTrue(result["ok"], result)
+        owner = "human.owner"
+        spec = Project.solo(owner, registry=build_registry(("software",))).to_spec()
+        workspace = WorkspaceService(spec=spec, home=self.home, packs=("software",))
+        request = "实现前端界面实现模块并实现后端接口实现模块"
+        decision = Router(workspace.registry).route(WorkItem(id="WI-WORKSPACE", input=request, deliverable=request))
+        self.assertEqual(result["role_id"], decision.selected_role)
 
 
 if __name__ == "__main__":

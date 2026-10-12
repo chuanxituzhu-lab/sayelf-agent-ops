@@ -1,6 +1,6 @@
 ---
 name: sayelf-agent-ops
-description: "Use when a task should be routed by its deliverable to the right professional role and skill (media / construction engineering), or run through the Solo/Team Human + Multi-Agent loop with independent review and per-action human approval. Chinese triggers: Agent Ops / 一人公司 / 交付物路由 / 按交付物分派 / 岗位路由 / 谁来干 / 人工裁决 / Human Gate / 独立审核. Not for build discipline (use sayelf-base) or ordinary questions."
+description: "Use when a task should be routed by its deliverable to the right professional role and skill (media / construction engineering / software), or run through the Solo/Team Human + Multi-Agent loop with independent review and per-action human approval. Chinese triggers: Agent Ops / 一人公司 / 交付物路由 / 按交付物分派 / 岗位路由 / 谁来干 / 人工裁决 / Human Gate / 独立审核. Not for build discipline (use sayelf-base) or ordinary questions."
 metadata:
   short-description: 交付物优先路由 + Human + Multi-Agent 执行内核
   aliases: [Agent Ops, 一人公司, 交付物路由, 岗位路由, 谁来干, 人工裁决, Human Gate, 独立审核]
@@ -31,7 +31,7 @@ python D:\Codex\skills\sayelf-agent-ops\scripts\route.py "写 5 个公众号标�
 python D:\Codex\skills\sayelf-agent-ops\scripts\route.py --run "把已确认的文章整理成公众号草稿发布准备包"
 ```
 
-已注册 MCP 入口时（见 `docs/mcp.md`），优先用 MCP 工具 `run_task` / `deliver_task`；需要人工裁决的交付，请提示用户在终端运行 `python -m sayelf_agent_ops.approve_cli approve <请求号>`，不要尝试代为批准。
+已注册 MCP 入口时（见 `docs/mcp.md`），Codex 宿主默认只调用 `route_task`，读取并校验 `workflow_contract` 后由宿主执行；不要调用 `run_task`。只有明确选择内核已接入执行器的客户端，才使用 `run_task` / `deliver_task`。需要人工裁决的交付，请提示用户在终端运行 `python -m sayelf_agent_ops.approve_cli approve <请求号>`，不要尝试代为批准。
 
 工作区接口（`docs/sprint-07-workspace-api.md`）是给人用的产品工作台入口。Agent 不得读取、索要或使用成员令牌，也不得调用其中的 decision 接口。
 
