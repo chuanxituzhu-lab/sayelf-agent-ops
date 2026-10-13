@@ -13,10 +13,11 @@ from .registry import Registry, build_default_registry
 
 OWNER_ROLE = "owner"
 
-# 审核是独立岗位，不参与交付物路由（因此不放进 Registry.roles，不影响 Sprint 01 路由）。
+# 审核是独立岗位，不参与交付物路由；能复用行业包契约，但不影响 Sprint 01 路由。
 REVIEW_ROLES: dict[str, str] = {
     "media": "media.reviewer",
     "engineering": "engineering.reviewer",
+    "software": "software.reviewer",
 }
 
 
@@ -78,9 +79,9 @@ class Project:
 
     @staticmethod
     def _default_agents(registry: Registry) -> list[Actor]:
-        agents = [Actor(id=f"agent.{rid}", kind="agent", roles=(rid,)) for rid in registry.roles]
-        agents += [Actor(id=f"agent.{rid}", kind="agent", roles=(rid,)) for rid in REVIEW_ROLES.values()]
-        return agents
+        role_ids = list(registry.roles)
+        role_ids.extend(role_id for role_id in REVIEW_ROLES.values() if role_id not in registry.roles)
+        return [Actor(id=f"agent.{rid}", kind="agent", roles=(rid,)) for rid in role_ids]
 
     @classmethod
     def from_spec(cls, spec: dict[str, Any], registry: Registry | None = None) -> "Project":

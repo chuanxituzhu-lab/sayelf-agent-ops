@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from sayelf_agent_ops.workspace import WorkspaceService
+from sayelf_agent_ops.workspace import WorkspaceError, WorkspaceService
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +47,21 @@ class GenericWorkbenchTests(unittest.TestCase):
             self.assertEqual("media", result["decision"]["industry"])
             self.assertEqual(before, (home / "workspace" / "state.json").exists())
 
+    def test_unroutable_work_returns_actionable_error(self):
+        with tempfile.TemporaryDirectory() as raw:
+            service = WorkspaceService(spec=json.loads(GENERIC.read_text(encoding="utf-8")), home=Path(raw))
+            with self.assertRaises(WorkspaceError) as ctx:
+                service.submit("human.owner", "制作过程", industry="生态微景观")
+            self.assertEqual("UNROUTABLE_DELIVERABLE", ctx.exception.code)
+
+    def test_software_execution_has_an_independent_reviewer(self):
+        with tempfile.TemporaryDirectory() as raw:
+            service = WorkspaceService(spec=json.loads(GENERIC.read_text(encoding="utf-8")), home=Path(raw))
+            item = service.submit("human.owner", "开发一个登录页面", industry="软件开发")
+            self.assertEqual("DELIVERED", item["state"])
+            self.assertEqual("agent.software.reviewer", item["reviewer"])
+            self.assertNotEqual(item["assignee"], item["reviewer"])
+
     def test_console_explains_generic_base_and_optional_packs(self):
         app = (ROOT / "sayelf_agent_ops" / "console" / "web" / "app.js").read_text(encoding="utf-8")
         html = (ROOT / "sayelf_agent_ops" / "console" / "web" / "index.html").read_text(encoding="utf-8")
@@ -55,6 +70,7 @@ class GenericWorkbenchTests(unittest.TestCase):
         self.assertIn("async function connections()", app)
         self.assertIn("data-view=\"connections\"", html)
         self.assertIn("通用智能工作台", html)
+        self.assertIn("UNROUTABLE_DELIVERABLE", app)
         self.assertNotIn("BuildCostIQ", app)
 
 

@@ -24,7 +24,7 @@
   const pill = (text, kind = "") => node("span", {class: `pill ${kind}`, text});
   const heading = (title, aside) => node("div", {class: "row between"}, node("h2", {text: title}), aside ? node("span", {class: "muted small", text: aside}) : null);
   function toast(message) { const n = $("#toast"); n.textContent = message; n.hidden = false; clearTimeout(toast.timer); toast.timer = setTimeout(() => { n.hidden = true; }, 3500); }
-  const errorText = (e) => ({AUTH_REQUIRED:"请先登录",INVALID_TOKEN:"凭证已失效",ORIGIN_NOT_ALLOWED:"接口没有允许此页面来源",FILE_TYPE_NOT_ALLOWED:"这种文件类型不收",FILE_TOO_LARGE:"文件超过 20 MiB",FILE_EMPTY:"文件是空的",FILE_NAME_INVALID:"文件名不合法",XLSX_UNSAFE_XML:"Excel 含不安全 XML，已拒收",XLSX_INVALID:"Excel 文件损坏",INVALID_FILES:"附件数量或格式不对",UNKNOWN_FILE:"找不到附件",REASON_REQUIRED_TO_RETURN:"退回必须写明原因"}[e && e.code] || (e && e.message) || "操作失败");
+  const errorText = (e) => ({AUTH_REQUIRED:"请先登录",INVALID_TOKEN:"凭证已失效",ORIGIN_NOT_ALLOWED:"接口没有允许此页面来源",FILE_TYPE_NOT_ALLOWED:"这种文件类型不收",FILE_TOO_LARGE:"文件超过 20 MiB",FILE_EMPTY:"文件是空的",FILE_NAME_INVALID:"文件名不合法",XLSX_UNSAFE_XML:"Excel 含不安全 XML，已拒收",XLSX_INVALID:"Excel 文件损坏",INVALID_FILES:"附件数量或格式不对",UNKNOWN_FILE:"找不到附件",REASON_REQUIRED_TO_RETURN:"退回必须写明原因",UNROUTABLE_DELIVERABLE:"没有识别出可执行的交付物，请把工作内容写成明确结果，或先点击“只看分派方案”",NO_REVIEW_ROLE_FOR_INDUSTRY:"该行业还没有配置独立复核岗位，当前只能查看分派方案",NO_REVIEWER_AGENT:"缺少独立复核 Agent，当前只能查看分派方案",SKILLS_BLOCKED:"所需技能暂不可用，工作已暂停等待补充能力"}[e && e.code] || (e && e.message) || "操作失败");
   async function api(method, path, body) {
     const headers = {Accept: "application/json"};
     if (token) headers.Authorization = `Bearer ${token}`;

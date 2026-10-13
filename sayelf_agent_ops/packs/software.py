@@ -86,6 +86,15 @@ def build_pack() -> IndustryPack:
             forbidden_scope=("approve-own-production-release",),
         ),
         RoleContract(
+            id="software.reviewer",
+            industry="software",
+            name="Software Independent Reviewer / 软件独立复核",
+            responsibility="独立复核软件岗位产出与验证证据；不承担主产出，避免自我审核。",
+            owned_outputs=(),
+            allowed_skills=(),
+            forbidden_scope=("produce-primary-output", "approve-own-production-release"),
+        ),
+        RoleContract(
             id="software.platform-operations",
             industry="software",
             name="Platform Operations / 平台运维",

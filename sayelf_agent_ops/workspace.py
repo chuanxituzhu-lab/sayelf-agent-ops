@@ -369,9 +369,14 @@ class WorkspaceService:
             routed_text, _ = self._route_input(clean, industry)
             try:
                 wi = self.runtime.submit(routed_text, submitted_by=actor_id, attachments=attachments)
-            except ValueError as error:
+            except (ValueError, LookupError) as error:
                 raise WorkspaceError(_code(error), 422) from None
-            wi = self.runtime.run(wi)
+            try:
+                wi = self.runtime.run(wi)
+            except LookupError as error:
+                # Missing independent review staffing is a valid, actionable
+                # workspace condition. Keep it out of the generic 500 path.
+                raise WorkspaceError(_code(error), 422) from None
             self._save_state()
             return self._workitem_view(wi, actor_id, detail=True)
 
