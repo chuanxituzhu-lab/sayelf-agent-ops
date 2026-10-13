@@ -47,7 +47,7 @@ Sayelf Agent Ops 面向一人公司和小团队，目标是让专业工作可以
 
 Sprint 01 已打通最小路由与规划路径：请求 → WorkItem → 路由 → 计划 → READY。媒体路由示例可将请求分配到 `media.content-planner`，并选择 `media.title-writing` 技能。
 
-桌面工作台提供专业工作需求入口：媒体与工程工作空间可输入文字，并可添加 TXT、Markdown、PDF 和常见照片。PDF 文字提取与中英文 OCR 在本机离线完成；图片只识别文字，不分析画面场景或物体。每项工作最多添加 5 个附件、单个不超过 15 MiB。提交后自动生成最少岗位方案；系统只要求激活本次工作需要的角色。工程包当前提供岗位分工方案，工程成果执行器尚未接入。
+桌面工作台提供通用专业工作需求入口：用户输入行业/专业和工作内容，系统先按交付物自动识别行业、最少岗位与技能，再生成可核对的分派方案；确认后执行并在详情页展示可读成果、占位状态和证据日志。媒体标题技能已可在本机直接生成真实标题；尚未接入执行器的技能会明确显示结构占位，不冒充成品。工作正文与行业提示分开保存，行业提示不会污染生成内容。工作台可添加 TXT、Markdown、PDF 和常见照片；PDF 文字提取与中英文 OCR 在本机离线完成；图片只识别文字，不分析画面场景或物体。每项工作最多添加 5 个附件、单个不超过 15 MiB。
 
 复合需求会合并已注册路由规则，并按技能输入/输出依赖排序。例如“为小红书写笔记并生成配图方案”会覆盖内容和视觉成果；“对比 BOQ 和施工图”会覆盖商务与技术成果。无法匹配的能力会提示补充或说明缺口，不会临时编造岗位。
 
@@ -73,7 +73,7 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 - **团队（N 人 + N Agent）：** 专业岗位由人担任时那一步交给人；多人裁决须各批一次才交付；成员可加入、退出，历史不改写。通用团队规格见 `templates/agent-ops-team-workspace.json`；内核评估场见 `evals/fixtures/team-project.json`。
 - **模型接口：** 没有 Claude Code、Codex 等 AI 平台也能运行：直连 DeepSeek、通义千问、豆包、Kimi、智谱或本机 Ollama，每个技能都可由模型起草，自检、复核、人工审批照旧。见 [docs/model-port.md](docs/model-port.md)。
 - **产品工作台接入：** 行业产品用自己的界面，通过本机工作区接口连内核：成员凭各自令牌登录，提交人工任务、联签审批；Agent 没有令牌。BuildCostIQ 是一个显式的造价产品模板，不是 Agent Ops 共享底座的默认 UI。见 [docs/sprint-07-workspace-api.md](docs/sprint-07-workspace-api.md)。
-- **通用本地工作台：** Sprint 09 融合了一个不依赖 Node 的标准库 WebUI：打开后输入行业/专业与工作内容、预览最少岗位、附加文件、提交工作项并查看成果与证据。行业包只是示范与已连接能力目录；未选择行业也能先做路由建议。预览方案后可返回修改，输入变化会使旧方案失效并要求重新生成；确认后才开始执行。文本、CSV、JSON、Markdown 与安全的 XLSX 在工作区内提取；PDF、照片、DWG 等先保留原件和哈希，界面明确标注未解析。它只调用当前 Workspace API，不创建第二套执行内核。默认初始化使用 `templates/agent-ops-workspace.json`；多人工作区可显式选择 `templates/agent-ops-team-workspace.json`。见 [Sprint 09 深度融合决策](docs/bdr-sprint09-deep-fusion.md) 与 [Harness 分派预览决策](docs/bdr-harness-route-edit-loop.md)。
+- **通用本地工作台：** Sprint 09 融合了一个不依赖 Node 的标准库 WebUI：打开后输入行业/专业与工作内容、预览最少岗位、附加文件、提交工作项并查看成果与证据。行业包只是示范与已连接能力目录；未选择行业也能先做路由建议。预览方案后可返回修改，输入变化会使旧方案失效并要求重新生成；确认后才开始执行。结果页把结构化 `content` / `items` 渲染成可读成果，并把 `placeholder=true` 明确显示为结构占位；路由卡同时显示识别依据。文本、CSV、JSON、Markdown 与安全的 XLSX 在工作区内提取；PDF、照片、DWG 等先保留原件和哈希，界面明确标注未解析。它只调用当前 Workspace API，不创建第二套执行内核。默认初始化使用 `templates/agent-ops-workspace.json`；多人工作区可显式选择 `templates/agent-ops-team-workspace.json`。见 [Sprint 09 深度融合决策](docs/bdr-sprint09-deep-fusion.md) 与 [Harness 分派预览决策](docs/bdr-harness-route-edit-loop.md)。
 - **四条 Solo 不变式**由 `evals/test_solo_invariants.py` 强制。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [规则层规格](docs/sprint-02-gates-spec.md)。
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。任何支持 MCP 的 Agent 可通过本机 MCP 入口调用内核，Agent 不能批准，需人在终端批准，见 [docs/mcp.md](docs/mcp.md)。
@@ -162,7 +162,7 @@ Business request
 
 Sprint 01 implements a verifiable routing and planning path: request → WorkItem → route → plan → READY. The media routing example assigns a request to `media.content-planner` with the `media.title-writing` skill.
 
-The desktop workbench accepts media and engineering requests in their matching local workspace. Users can enter text and attach TXT, Markdown, PDF, or common image files in supported workspaces. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not interpret image scenes or objects. Each work item accepts up to five attachments, 15 MiB each. The app creates a WorkItem and minimum role plan; only roles needed for that request need activation. Engineering plans are not executed because handlers are not connected.
+The desktop workbench is industry-neutral: a user enters an industry or specialty and the work description, then the system identifies the deliverable, minimum roles, and skills before showing an editable route preview. After confirmation, the detail page renders structured `content` / `items` as readable results, marks `placeholder=true` outputs as structural placeholders, and keeps the evidence log visible. The media title skill can generate real titles locally; unsupported handlers remain explicit placeholders. The original work text is kept separate from the industry hint so routing context never leaks into generated content. Users can attach TXT, Markdown, PDF, or common image files. PDF text extraction and Chinese/English OCR run locally and offline. Images are OCRed for text; the app does not interpret image scenes or objects. Each work item accepts up to five attachments, 15 MiB each.
 
 The workbench also accepts an industry label such as “self-media company,” “MCN,” or “WeChat content operations” and recommends roles from the local registered pack. Recommendations reuse existing roles and do not activate or create them. Unsupported or ambiguous input asks the user to clarify; no model call is made.
 
@@ -190,7 +190,7 @@ submit → deliverable-first routing → load only planned skills → produce �
 - **Teams (N humans + N agents):** a step whose role a human holds goes to that person; quorum gates need one approval from each distinct person; members can join and leave without rewriting history. See `templates/agent-ops-team-workspace.json` and [docs/sprint-06-team.md](docs/sprint-06-team.md).
 - **Model port:** runs without any AI host platform by calling an OpenAI-compatible model directly (DeepSeek, Qwen, Doubao, Kimi, GLM, local Ollama); every skill can be drafted by the model, with self-check, independent review and human approval unchanged. See [docs/model-port.md](docs/model-port.md).
 - **Product workbenches:** an industry product keeps its own UI and connects through the local Workspace API: each member signs in with their own token to submit human steps and decide quorum gates; agents get no token. See [docs/sprint-07-workspace-api.md](docs/sprint-07-workspace-api.md).
-- **Harness route loop:** the generic local workbench previews the minimum role plan through the shared routing contract, lets the user return and edit the input, invalidates stale previews, and starts execution only after the current plan is confirmed. See [docs/bdr-harness-route-edit-loop.md](docs/bdr-harness-route-edit-loop.md).
+- **Harness route loop:** the generic local workbench previews the minimum role plan through the shared routing contract, shows the recognition reason, lets the user return and edit the input, invalidates stale previews, and starts execution only after the current plan is confirmed. The result view distinguishes generated content from structural placeholders. See [docs/bdr-harness-route-edit-loop.md](docs/bdr-harness-route-edit-loop.md).
 - **Four Solo invariants** are enforced by `evals/test_solo_invariants.py`. See [ARCHITECTURE.md](ARCHITECTURE.md) and the [rules spec](docs/sprint-02-gates-spec.md).
 
 For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`. Any MCP-capable agent can call the kernel through the local MCP entry; agents cannot approve — a human approves in a terminal. See [docs/mcp.md](docs/mcp.md).

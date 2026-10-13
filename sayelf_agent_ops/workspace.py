@@ -287,7 +287,9 @@ class WorkspaceService:
                 raise WorkspaceError("INVALID_INPUT")
             clean = text.strip()
             routed_text, industry_hint = self._route_input(clean, industry)
-            probe = WorkItem(id="ROUTE", input=routed_text, goal=routed_text, deliverable=routed_text)
+            # Keep the user's work text intact; the industry hint is routing
+            # context, not part of the material a skill should write about.
+            probe = WorkItem(id="ROUTE", input=clean, goal=routed_text, deliverable=routed_text)
             try:
                 decision = self.runtime.router.route(probe)
                 plan = self.runtime.planner.build(probe, decision)
@@ -368,7 +370,10 @@ class WorkspaceService:
             clean = text.strip()
             routed_text, _ = self._route_input(clean, industry)
             try:
-                wi = self.runtime.submit(routed_text, submitted_by=actor_id, attachments=attachments)
+                # Route with the industry hint while preserving the original
+                # request as the work item's user-facing input and skill input.
+                wi = self.runtime.submit(clean, goal=routed_text, deliverable=routed_text,
+                                         submitted_by=actor_id, attachments=attachments)
             except (ValueError, LookupError) as error:
                 raise WorkspaceError(_code(error), 422) from None
             try:

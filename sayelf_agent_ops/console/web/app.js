@@ -57,7 +57,7 @@
     const steps = (data.steps || []).map((step, index) => node("li", {}, node("span", {class: "num", text: String(index + 1)}), node("div", {}, node("div", {class: "step-title", text: `${step.role} · ${step.skill}`}), node("div", {class: "muted small", text: step.done_when || "完成岗位输出并留下证据"}))));
     const contractValid = data.workflow_validation && (data.workflow_validation.ok || data.workflow_validation.valid || data.workflow_validation.status === "valid");
     const controls = actions.onExecute || actions.onEdit ? node("div", {class: "actions"}, actions.onEdit ? node("button", {class: "btn ghost", type: "button", text: "返回修改", onclick: actions.onEdit}) : null, actions.onExecute ? node("button", {class: "btn", type: "button", text: "按此方案开始执行", onclick: actions.onExecute}) : null) : null;
-    return node("section", {class: "route stack"}, node("div", {class: "row between"}, node("div", {}, node("b", {text: `${decision.industry || "通用"} · ${decision.deliverable_type || "交付物"}`}), data.industry_input ? node("div", {class: "muted small", text: `输入行业：${data.industry_input}`}) : null), pill(`最少岗位 ${new Set((data.steps || []).map((s) => s.role)).size}`)), node("ol", {class: "steps"}, steps), node("div", {class: "notice", text: contractValid ? "已生成可核对的分派草案。可修改上方输入后重新生成，确认后再开始执行。" : "需要补充输入或能力后再执行。"}), controls);
+    return node("section", {class: "route stack"}, node("div", {class: "row between"}, node("div", {}, node("b", {text: `${decision.industry || "通用"} · ${decision.deliverable_type || "交付物"}`}), data.industry_input ? node("div", {class: "muted small", text: `输入行业：${data.industry_input}`}) : null), pill(`最少岗位 ${new Set((data.steps || []).map((s) => s.role)).size}`)), decision.reason ? node("p", {class: "muted small", text: `识别依据：${decision.reason}`}) : null, node("ol", {class: "steps"}, steps), node("div", {class: "notice", text: contractValid ? "已生成可核对的分派草案。可修改上方输入后重新生成，确认后再开始执行。" : "需要补充输入或能力后再执行。"}), controls);
   }
   function modelSummary(model) {
     const configured = Boolean(model && model.configured);
@@ -132,11 +132,22 @@
   }
   async function download(file) { const response = await fetch(`${config.api}/files/${file.id}/content`, {headers: {Authorization: `Bearer ${token}`}}); if (!response.ok) throw new Error("下载失败"); const url = URL.createObjectURL(await response.blob()); const a = node("a", {href: url, download: file.name}); a.click(); setTimeout(() => URL.revokeObjectURL(url), 3000); }
   function attachmentCard(item) { if (!item.attachments || !item.attachments.length) return null; return node("section", {class: "card"}, heading("输入材料", `${item.attachments.length} 个`), node("div", {class: "stack"}, item.attachments.map((file) => node("div", {class: "row between"}, node("span", {class: "small", text: `${file.name} · ${Math.ceil((file.size || 0) / 1024)} KB`}), node("button", {class: "btn ghost", type: "button", text: "下载", onclick: () => download(file).catch((e) => toast(e.message))}))))); }
+  function outputCard(raw) {
+    const out = raw && typeof raw === "object" ? raw : {content: String(raw ?? "")};
+    const placeholder = out.placeholder === true;
+    const items = Array.isArray(out.items) ? out.items.filter((item) => item !== null && item !== undefined && String(item).trim()) : [];
+    const content = typeof out.content === "string" && out.content.trim() ? out.content.trim() : (typeof out.summary === "string" ? out.summary.trim() : "");
+    const readable = [];
+    if (content) readable.push(node("p", {class: "output-content", text: content}));
+    if (items.length) readable.push(node("ol", {class: "output-items"}, items.map((item) => node("li", {text: typeof item === "string" ? item : JSON.stringify(item)}))));
+    if (!readable.length) readable.push(node("pre", {class: "output-raw", text: JSON.stringify(out, null, 2)}));
+    return node("article", {class: "output-card stack"}, node("div", {class: "row between"}, node("b", {text: out.type || "工作成果"}), node("div", {class: "row"}, pill(placeholder ? "结构占位" : "已生成", placeholder ? "warn" : ""), out.skill ? node("span", {class: "muted small", text: out.skill}) : null)), ...readable, out.note ? node("p", {class: "muted small", text: out.note}) : null);
+  }
   async function itemView(id) {
     const item = await api("GET", `/workitems/${encodeURIComponent(id)}`); const gate = item.gate;
     const decide = async (approve) => { const reason = window.prompt(approve ? "批准说明（可留空）" : "退回原因（必填）", "") || ""; if (!approve && !reason.trim()) return; try { await api("POST", `/workitems/${encodeURIComponent(id)}/decision`, {approve, reason}); toast(approve ? "已批准" : "已退回"); render(); } catch (e) { toast(errorText(e)); } };
     const steps = (item.steps || []).map((step, index) => node("li", {}, node("span", {class: "num", text: String(index + 1)}), node("div", {}, node("div", {class: "step-title", text: `${step.role} · ${step.skill}`}), node("div", {class: "muted small", text: step.output || "—"}))));
-    const outputs = item.outputs && item.outputs.length ? node("div", {class: "stack"}, item.outputs.map((out) => node("div", {class: "output", text: JSON.stringify(out, null, 2)}))) : node("p", {class: "empty", text: "成果尚未生成，或正在等待 Codex 执行并回填证据。"});
+    const outputs = item.outputs && item.outputs.length ? node("div", {class: "stack"}, item.outputs.map(outputCard)) : node("p", {class: "empty", text: "成果尚未生成，或正在等待 Codex 执行并回填证据。"});
     const events = item.events && item.events.length ? node("div", {class: "timeline"}, item.events.map((event) => node("div", {class: "event"}, node("b", {text: event.event || "event"}), ` · ${event.actor || "—"}`))) : node("p", {class: "empty", text: "暂无事件"});
     const gateCard = gate ? node("section", {class: "card gate-card"}, heading("对外动作待批准"), node("p", {class: "muted small", text: `${gate.action || "需要批准"} · 目标：${gate.target || "当前工作项"}`}), node("p", {class: "muted small", text: gate.kind === "quorum" ? "需要所有要求的不同负责人分别批准。" : "一次批准只授权当前成果和当前动作。"}), node("div", {class: "actions"}, node("button", {class: "btn", disabled: !gate.can_decide, text: gate.can_decide ? "批准这一次" : "等待其他负责人", onclick: () => decide(true)}), node("button", {class: "btn ghost danger", disabled: !gate.can_decide, text: "退回", onclick: () => decide(false)}))) : node("section", {class: "card"}, heading("审批"), node("p", {class: "muted small", text: "当前工作项不需要人工批准，交付由执行证据决定。"}));
     const evidenceCard = node("section", {class: "card"}, heading("证据日志", `${(item.events || []).length} 条`), events);

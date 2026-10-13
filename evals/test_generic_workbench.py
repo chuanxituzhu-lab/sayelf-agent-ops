@@ -47,6 +47,15 @@ class GenericWorkbenchTests(unittest.TestCase):
             self.assertEqual("media", result["decision"]["industry"])
             self.assertEqual(before, (home / "workspace" / "state.json").exists())
 
+    def test_industry_hint_does_not_pollute_generated_work(self):
+        with tempfile.TemporaryDirectory() as raw:
+            service = WorkspaceService(spec=json.loads(GENERIC.read_text(encoding="utf-8")), home=Path(raw))
+            item = service.submit("human.owner", "为这篇新品写 2 个公众号标题", industry="自媒体公司")
+            self.assertEqual("为这篇新品写 2 个公众号标题", item["input"])
+            titles = item["outputs"][0]["items"]
+            self.assertEqual(2, len(titles))
+            self.assertTrue(all("行业/专业：" not in title for title in titles))
+
     def test_unroutable_work_returns_actionable_error(self):
         with tempfile.TemporaryDirectory() as raw:
             service = WorkspaceService(spec=json.loads(GENERIC.read_text(encoding="utf-8")), home=Path(raw))
@@ -73,6 +82,10 @@ class GenericWorkbenchTests(unittest.TestCase):
         self.assertIn("UNROUTABLE_DELIVERABLE", app)
         self.assertIn("按此方案开始执行", app)
         self.assertIn("输入已修改，请重新生成分派方案", app)
+        self.assertIn("识别依据：", app)
+        self.assertIn("function outputCard", app)
+        self.assertIn("结构占位", app)
+        self.assertIn("output-items", app)
         self.assertNotIn("BuildCostIQ", app)
 
 
