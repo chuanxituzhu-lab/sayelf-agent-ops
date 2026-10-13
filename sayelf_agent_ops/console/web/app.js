@@ -60,7 +60,8 @@
   }
   async function home() {
     const [caps, items] = await Promise.all([api("GET", "/capabilities"), api("GET", "/workitems")]);
-    const text = node("textarea", {class: "input textarea", maxlength: "20000", placeholder: "例如：为这篇新品写 5 个公众号标题，给出分工和交付包。"});
+    const industry = node("input", {class: "input", maxlength: "120", placeholder: "例如：自媒体公司、软件开发、工程咨询、教育培训"});
+    const text = node("textarea", {class: "input textarea", maxlength: "20000", placeholder: "输入要完成的专业工作，例如：为这篇新品写 5 个公众号标题，给出分工和交付包。"});
     const fileInput = node("input", {type: "file", multiple: true, hidden: true, accept: ".xlsx,.xls,.csv,.tsv,.txt,.md,.json,.pdf,.docx,.dwg,.dxf,.png,.jpg,.jpeg"});
     const preview = node("div", {class: "stack"}); const status = node("span", {class: "muted small"});
     fileInput.addEventListener("change", async () => {
@@ -74,19 +75,19 @@
     });
     const previewButton = node("button", {class: "btn ghost", type: "button", text: "只看分派方案", onclick: async () => {
       if (!text.value.trim()) { toast("先写工作内容"); return; }
-      try { preview.replaceChildren(routeCard(await api("POST", "/route", {text: text.value.trim()}))); } catch (error) { toast(errorText(error)); }
+      try { preview.replaceChildren(routeCard(await api("POST", "/route", {industry: industry.value.trim(), text: text.value.trim()}))); } catch (error) { toast(errorText(error)); }
     }});
     const submit = node("button", {class: "btn", type: "button", text: "开始执行", onclick: async () => {
       if (!text.value.trim()) { toast("先写工作内容"); return; }
       submit.disabled = true;
-      try { const item = await api("POST", "/workitems", {text: text.value.trim(), files: uploads.map((file) => file.id)}); uploads = []; location.hash = `#/items/${encodeURIComponent(item.id)}`; }
+      try { const item = await api("POST", "/workitems", {industry: industry.value.trim(), text: text.value.trim(), files: uploads.map((file) => file.id)}); uploads = []; location.hash = `#/items/${encodeURIComponent(item.id)}`; }
       catch (error) { toast(errorText(error)); } finally { submit.disabled = false; }
     }});
     const recent = (items.workitems || []).slice(0, 5);
-    const hero = node("section", {class: "hero card"}, node("h1", {text: "今天要交付什么？"}), node("p", {text: "用一句话交付物，系统按最少岗位分派，完成自检、独立复核和人类批准。"}));
-    const inputCard = node("section", {class: "card stack"}, heading("输入需求", "本地处理"), node("label", {class: "field"}, "工作内容", text), node("div", {class: "row"}, node("label", {class: "btn ghost", text: "附加文字 / PDF / 图片"}, fileInput)), uploads.length ? chips() : null, node("p", {class: "notice", text: "Excel、CSV、TXT、Markdown、JSON 会在本地提取文字；PDF、图片、DWG 先安全存档并在成果中标明未解析。"}), node("div", {class: "actions"}, previewButton, submit, status), preview);
+    const hero = node("section", {class: "hero card"}, node("h1", {text: "今天要交付什么？"}), node("p", {text: "这是通用 Agent Ops 工作台。输入行业或专业与工作内容，系统按最少岗位生成可核对的工作闭环。"}));
+    const inputCard = node("section", {class: "card stack"}, heading("输入需求", "本地处理"), node("label", {class: "field"}, "行业 / 专业（可填）", industry), node("label", {class: "field"}, "工作内容", text), node("div", {class: "row"}, node("label", {class: "btn ghost", text: "附加文字 / PDF / 图片"}, fileInput)), uploads.length ? chips() : null, node("p", {class: "notice", text: "行业包只是示范与已连接能力目录；不选择行业也可以先生成路由建议。附件和工作内容均在本机处理。"}), node("div", {class: "actions"}, previewButton, submit, status), preview);
     const recentCard = node("section", {class: "card"}, heading("最近工作"), recent.length ? node("div", {class: "stack"}, recent.map((item) => node("a", {href: `#/items/${encodeURIComponent(item.id)}`, text: `${item.id} · ${label(item.state)}`}))) : node("p", {class: "empty", text: "还没有工作项。"}));
-    const abilityCard = node("section", {class: "card"}, heading("当前能力"), node("p", {class: "muted small", text: `行业包：${(caps.packs || []).join("、") || "通用"}`}), node("p", {class: "muted small", text: "执行宿主：Codex；route_task 只生成可核对的岗位分工和证据要求。"}));
+    const abilityCard = node("section", {class: "card"}, heading("共享底座"), node("p", {class: "muted small", text: "通用 Agent Ops：先识别需求，再组合最少岗位、执行技能、自检、独立复核和交付证据。"}), node("p", {class: "muted small", text: `示范行业包：${(caps.packs || []).join("、") || "暂无"}`}), node("p", {class: "muted small", text: "执行宿主：Codex；route_task 只生成可核对的岗位分工和证据要求。"}));
     return node("div", {class: "page"}, hero, node("div", {class: "grid"}, inputCard, node("aside", {class: "stack"}, recentCard, abilityCard)));
   }
   async function items() {

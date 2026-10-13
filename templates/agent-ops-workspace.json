@@ -1,0 +1,20 @@
+{
+  "id": "P-SAYELF-AGENT-OPS",
+  "description": "Sayelf Agent Ops 通用工作区：用户输入行业与工作内容后生成最少岗位闭环；行业包仅作为可选示范与执行能力目录。",
+  "members": [
+    {
+      "id": "human.owner",
+      "name": "负责人",
+      "roles": ["owner"]
+    }
+  ],
+  "include_default_agents": true,
+  "policy": {
+    "gated_deliverables": {
+      "platform-package": "publish"
+    },
+    "gate_approver_roles": {
+      "publish": ["owner"]
+    }
+  }
+}

@@ -1,9 +1,9 @@
 """Sprint 07 — Workspace API: a local HTTP entry for product workbenches.
 
-  python -m sayelf_agent_ops.workspace_api init --spec templates/buildcostiq-project-department.json
-  python -m sayelf_agent_ops.workspace_api issue-token human.pm
+  python -m sayelf_agent_ops.workspace_api init
+  python -m sayelf_agent_ops.workspace_api issue-token human.owner
   python -m sayelf_agent_ops.workspace_api serve [--port 8765] [--allow-origin http://127.0.0.1:5173]
-  python -m sayelf_agent_ops.workspace_api revoke-token human.pm
+  python -m sayelf_agent_ops.workspace_api revoke-token human.owner
 
 Safety, by construction:
 
@@ -88,12 +88,14 @@ def _routes(service: WorkspaceService) -> list[Route]:
         r("GET", "/me", lambda a, b: service.me(a)),
         r("GET", "/project", lambda a, b: service.project_view(a)),
         r("GET", "/capabilities", lambda a, b: service.capabilities(a)),
-        r("POST", "/route", lambda a, b: service.route_preview(a, (b or {}).get("text"))),
+        r("POST", "/route", lambda a, b: service.route_preview(
+            a, (b or {}).get("text"), (b or {}).get("industry"))),
         r("GET", "/project/events", lambda a, b: {"events": service.project_events(a)}),
         r("POST", "/members", lambda a, b: service.add_member(a, b), 201),
         r("DELETE", f"/members/{seg}", lambda a, b, m: service.remove_member(a, m)),
         r("GET", "/workitems", lambda a, b: {"workitems": service.list_workitems(a)}),
-        r("POST", "/workitems", lambda a, b: service.submit(a, (b or {}).get("text"), (b or {}).get("files")), 201),
+        r("POST", "/workitems", lambda a, b: service.submit(
+            a, (b or {}).get("text"), (b or {}).get("files"), (b or {}).get("industry")), 201),
         r("POST", "/files", lambda a, b: service.upload(a, (b or {}).get("name"), (b or {}).get("content_base64")), 201),
         r("GET", f"/files/{seg}", lambda a, b, f: service.file_meta(a, f)),
         r("GET", f"/files/{seg}/content", lambda a, b, f: ("__file__", *service.file_content(a, f))),
@@ -252,8 +254,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sayelf-workspace", description="Sayelf Agent Ops 工作区接口")
     parser.add_argument("--home", type=Path, default=None, help="数据目录（默认 ~/.sayelf/agent-ops）")
     sub = parser.add_subparsers(dest="command", required=True)
-    p_init = sub.add_parser("init", help="用项目规格初始化工作区（已存在则不覆盖）")
-    p_init.add_argument("--spec", type=Path, required=True)
+    p_init = sub.add_parser("init", help="初始化通用工作区（已存在则不覆盖）")
+    default_spec = Path(__file__).resolve().parents[1] / "templates" / "agent-ops-workspace.json"
+    p_init.add_argument("--spec", type=Path, default=default_spec,
+                        help="可选项目规格；默认使用通用 Agent Ops 工作区")
     p_issue = sub.add_parser("issue-token", help="为一位人类成员签发访问令牌（仅限交互终端）")
     p_issue.add_argument("member_id")
     p_revoke = sub.add_parser("revoke-token", help="作废某位成员的令牌")
@@ -276,7 +280,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if not project_file.exists():
-        print("还没有工作区。先运行：python -m sayelf_agent_ops.workspace_api init --spec <项目规格.json>",
+        print("还没有工作区。先运行：python -m sayelf_agent_ops.workspace_api init",
               file=sys.stderr)
         return 2
     model = None

@@ -1,10 +1,11 @@
 """Sprint 07 — Workspace service: the kernel as seen by a product workbench.
 
-A product workbench (BuildCostIQ first) shows its own industry UI and calls
-this layer for everything team-shaped: who is on the project, what is waiting
-for whom, and human decisions. Every call carries an ``actor_id`` that the
-entry layer resolved from a credential — never from the request body — so a
-person can only act as themselves.
+A product workbench shows its own optional industry UI and calls this layer
+for everything team-shaped: who is on the project, what is waiting for whom,
+and human decisions. The default workspace is industry-neutral; BuildCostIQ
+is an explicit template, not the shared Agent Ops product surface. Every call
+carries an ``actor_id`` that the entry layer resolved from a credential — never
+from the request body — so a person can only act as themselves.
 
 Two entries, two audiences:
 
@@ -267,14 +268,20 @@ class WorkspaceService:
                     rows.append(self._workitem_view(wi, actor_id))
             return rows
 
-    def route_preview(self, actor_id: str, text: Any) -> dict[str, Any]:
+    @staticmethod
+    def _route_input(text: str, industry: Any = None) -> tuple[str, str | None]:
+        hint = industry.strip() if isinstance(industry, str) and industry.strip() else None
+        return ((f"行业/专业：{hint}\n工作内容：{text}" if hint else text), hint)
+
+    def route_preview(self, actor_id: str, text: Any, industry: Any = None) -> dict[str, Any]:
         """Return the current minimum route without creating or executing work."""
         with self._lock:
             self.member(actor_id)
             if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
                 raise WorkspaceError("INVALID_INPUT")
             clean = text.strip()
-            probe = WorkItem(id="ROUTE", input=clean, goal=clean, deliverable=clean)
+            routed_text, industry_hint = self._route_input(clean, industry)
+            probe = WorkItem(id="ROUTE", input=routed_text, goal=routed_text, deliverable=routed_text)
             try:
                 decision = self.runtime.router.route(probe)
                 plan = self.runtime.planner.build(probe, decision)
@@ -291,7 +298,7 @@ class WorkspaceService:
                 steps.append({"step": step.step, "role": step.role, "skill": step.skill,
                               "output": step.output, "done_when": step.done_when,
                               "assignee": assignee})
-            return {"decision": asdict(decision), "steps": steps,
+            return {"industry_input": industry_hint, "decision": asdict(decision), "steps": steps,
                     "workflow_contract": contract, "workflow_validation": validation}
 
     # ------------------------------------------------------------------ files
@@ -346,14 +353,16 @@ class WorkspaceService:
         return out
 
     # ------------------------------------------------------------------ work
-    def submit(self, actor_id: str, text: Any, files: Any = None) -> dict[str, Any]:
+    def submit(self, actor_id: str, text: Any, files: Any = None, industry: Any = None) -> dict[str, Any]:
         with self._lock:
             self.member(actor_id)
             if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
                 raise WorkspaceError("INVALID_INPUT")
             attachments = self._attachments(files)
+            clean = text.strip()
+            routed_text, _ = self._route_input(clean, industry)
             try:
-                wi = self.runtime.submit(text, submitted_by=actor_id, attachments=attachments)
+                wi = self.runtime.submit(routed_text, submitted_by=actor_id, attachments=attachments)
             except ValueError as error:
                 raise WorkspaceError(_code(error), 422) from None
             wi = self.runtime.run(wi)
