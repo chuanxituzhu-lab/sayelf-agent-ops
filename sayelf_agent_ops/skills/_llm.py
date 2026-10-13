@@ -25,8 +25,22 @@ def channel_of(wi: WorkItem) -> str:
 
 
 def context_text(wi: WorkItem) -> str:
-    """Request plus extracted attachment text, bounded. Only sent after consent."""
-    return (wi.input or "")[:MAX_CONTEXT_CHARS]
+    """Request plus bounded extracted attachment text, only after consent."""
+    return materials_text(wi, MAX_CONTEXT_CHARS)
+
+
+def materials_text(wi: WorkItem, limit: int = 40_000) -> str:
+    """Keep material useful to an executor without logging or returning it."""
+    parts = [wi.input or ""]
+    for attachment in getattr(wi, "attachments", []) or []:
+        name = str(attachment.get("name", "附件"))
+        text = attachment.get("text")
+        if text:
+            parts.append(f"\n\n===== 附件《{name}》 =====\n{text}")
+        else:
+            parts.append(f"\n\n===== 附件《{name}》（未提取文字） =====")
+    result = "".join(parts)
+    return result if len(result) <= limit else result[:limit] + "\n（材料过长，已截断）"
 
 
 def call_json(provider: Any, *, remote: bool, consent: bool, system: str, payload: dict) -> dict:

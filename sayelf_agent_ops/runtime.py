@@ -156,6 +156,7 @@ class Runtime:
         deliverable: str | None = None,
         industry: str | None = None,
         submitted_by: str | None = None,
+        attachments: list[dict[str, Any]] | None = None,
     ) -> WorkItem:
         text = (text or "").strip()
         if not text:
@@ -170,11 +171,13 @@ class Runtime:
             goal=goal or text,
             deliverable=deliverable or text,
             owner=owner,
+            attachments=list(attachments or []),
         )
         # 未指定行业时由交付物路由决定；无法路由则直接拒绝，不硬套岗位。
         wi.industry = industry or self.router.route(wi).industry
         self.items[wi.id] = wi
-        self._log(wi, owner, "submit", input=text)
+        self._log(wi, owner, "submit", input=text,
+                  attachments=[{"id": a.get("id"), "name": a.get("name")} for a in wi.attachments])
         self._move(wi, SYSTEM_ROUTER, WorkState.SCOPED)
         return wi
 

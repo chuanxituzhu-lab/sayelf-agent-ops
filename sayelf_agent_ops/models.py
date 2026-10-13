@@ -28,6 +28,9 @@ class WorkItem:
     approver: str | None = None
     pending_gate: str | None = None
     rework_count: int = 0
+    # Local file metadata and bounded extracted text supplied with the request.
+    # The workspace view removes ``text`` so a list page never leaks materials.
+    attachments: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

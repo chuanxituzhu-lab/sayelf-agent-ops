@@ -19,16 +19,20 @@ evidence in ``<home>/workspace/state.json`` (Sprint 08), approvals in SQLite
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 import tempfile
 import threading
 import uuid
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
 from .actors import OWNER_ROLE, Actor, Project
 from .executor import BuiltinExecutor
+from .files import FileRejected, FileStore
 from .gates import GateRejected
 from .models import WorkItem
 from .registry import build_registry
@@ -37,10 +41,13 @@ from .runtime import Runtime
 from . import runtime_store
 from .service import MAX_TEXT, approval_store, default_home
 from .state import TransitionRejected, WorkState
+from .workflow_contract import build_workflow_contract, validate_workflow_contract
 
 MAX_MEMBER_ID = 64
 MAX_NAME = 64
 MAX_ROLES = 12
+MAX_FILES_PER_ITEM = 10
+MAX_ATTACHMENT_TEXT = 60_000
 
 
 class WorkspaceError(Exception):
@@ -89,6 +96,7 @@ class WorkspaceService:
         self.home = home or default_home()
         self.project_file = workspace_dir(self.home) / "project.json"
         self.state_file = workspace_dir(self.home) / "state.json"
+        self.files = FileStore(workspace_dir(self.home) / "files")
         self.registry = build_registry(packs)
         # The product workbench must see the same locally verified role
         # overlays as the MCP/service entry.  Loading the overlay is local and
@@ -197,6 +205,7 @@ class WorkspaceService:
             "assignee": wi.assignee,
             "reviewer": wi.reviewer,
             "rework_count": wi.rework_count,
+            "attachments": [{k: v for k, v in a.items() if k != "text"} for a in wi.attachments],
             "steps": steps,
             "waiting_for": ({"kind": "human-task", "assignee": task["assignee"], "step": task["step"],
                              "role": task["role"]} if task else None),
@@ -258,14 +267,93 @@ class WorkspaceService:
                     rows.append(self._workitem_view(wi, actor_id))
             return rows
 
-    # ------------------------------------------------------------------ work
-    def submit(self, actor_id: str, text: Any) -> dict[str, Any]:
+    def route_preview(self, actor_id: str, text: Any) -> dict[str, Any]:
+        """Return the current minimum route without creating or executing work."""
         with self._lock:
             self.member(actor_id)
             if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
                 raise WorkspaceError("INVALID_INPUT")
+            clean = text.strip()
+            probe = WorkItem(id="ROUTE", input=clean, goal=clean, deliverable=clean)
             try:
-                wi = self.runtime.submit(text, submitted_by=actor_id)
+                decision = self.runtime.router.route(probe)
+                plan = self.runtime.planner.build(probe, decision)
+            except ValueError as error:
+                raise WorkspaceError(_code(error), 422) from None
+            contract = build_workflow_contract(clean, decision, plan, self.registry)
+            validation = validate_workflow_contract(contract)
+            steps = []
+            for step in plan.steps:
+                try:
+                    assignee = self.project.assignee_for_role(step.role).id
+                except (KeyError, ValueError):
+                    assignee = None
+                steps.append({"step": step.step, "role": step.role, "skill": step.skill,
+                              "output": step.output, "done_when": step.done_when,
+                              "assignee": assignee})
+            return {"decision": asdict(decision), "steps": steps,
+                    "workflow_contract": contract, "workflow_validation": validation}
+
+    # ------------------------------------------------------------------ files
+    def upload(self, actor_id: str, name: Any, content_base64: Any) -> dict[str, Any]:
+        with self._lock:
+            self.member(actor_id)
+            if not isinstance(content_base64, str):
+                raise WorkspaceError("INVALID_INPUT")
+            try:
+                data = base64.b64decode(content_base64, validate=True)
+            except (binascii.Error, ValueError):
+                raise WorkspaceError("FILE_NOT_BASE64") from None
+            try:
+                return self.files.put(name, data, uploaded_by=actor_id)
+            except FileRejected as error:
+                code = _code(error)
+                raise WorkspaceError(code, 413 if "LARGE" in code else 422) from None
+
+    def file_meta(self, actor_id: str, file_id: str) -> dict[str, Any]:
+        with self._lock:
+            self.member(actor_id)
+            try:
+                return self.files.meta(file_id)
+            except FileRejected:
+                raise WorkspaceError("UNKNOWN_FILE", 404) from None
+
+    def file_content(self, actor_id: str, file_id: str) -> tuple[dict[str, Any], bytes]:
+        with self._lock:
+            self.member(actor_id)
+            try:
+                return self.files.content(file_id)
+            except FileRejected:
+                raise WorkspaceError("UNKNOWN_FILE", 404) from None
+
+    def _attachments(self, file_ids: Any) -> list[dict[str, Any]]:
+        if file_ids is None:
+            return []
+        if (not isinstance(file_ids, list) or len(file_ids) > MAX_FILES_PER_ITEM
+                or len(set(map(str, file_ids))) != len(file_ids)):
+            raise WorkspaceError("INVALID_FILES")
+        out: list[dict[str, Any]] = []
+        for file_id in file_ids:
+            try:
+                meta = self.files.meta(file_id)
+                text = self.files.text(file_id)
+            except FileRejected:
+                raise WorkspaceError("UNKNOWN_FILE", 404) from None
+            item = {k: meta[k] for k in ("id", "name", "media_type", "size", "sha256", "text_extracted")}
+            if text:
+                item["text"] = text[:MAX_ATTACHMENT_TEXT]
+            out.append(item)
+        return out
+
+    # ------------------------------------------------------------------ work
+    def submit(self, actor_id: str, text: Any, files: Any = None) -> dict[str, Any]:
+        with self._lock:
+            self.member(actor_id)
+            if not isinstance(text, str) or not text.strip() or len(text) > MAX_TEXT:
+                raise WorkspaceError("INVALID_INPUT")
+            attachments = self._attachments(files)
+            try:
+                wi = self.runtime.submit(text, submitted_by=actor_id, attachments=attachments)
             except ValueError as error:
                 raise WorkspaceError(_code(error), 422) from None
             wi = self.runtime.run(wi)

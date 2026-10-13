@@ -35,6 +35,7 @@ from .workspace import WorkspaceError, WorkspaceService, _write_json_atomic, wor
 
 API_VERSION = "v1"
 MAX_BODY = 64 * 1024
+MAX_UPLOAD_BODY = 28 * 1024 * 1024  # 20 MiB file plus base64 and JSON overhead
 DEFAULT_PORT = 8765
 LOOPBACK = "127.0.0.1"
 
@@ -87,11 +88,15 @@ def _routes(service: WorkspaceService) -> list[Route]:
         r("GET", "/me", lambda a, b: service.me(a)),
         r("GET", "/project", lambda a, b: service.project_view(a)),
         r("GET", "/capabilities", lambda a, b: service.capabilities(a)),
+        r("POST", "/route", lambda a, b: service.route_preview(a, (b or {}).get("text"))),
         r("GET", "/project/events", lambda a, b: {"events": service.project_events(a)}),
         r("POST", "/members", lambda a, b: service.add_member(a, b), 201),
         r("DELETE", f"/members/{seg}", lambda a, b, m: service.remove_member(a, m)),
         r("GET", "/workitems", lambda a, b: {"workitems": service.list_workitems(a)}),
-        r("POST", "/workitems", lambda a, b: service.submit(a, (b or {}).get("text")), 201),
+        r("POST", "/workitems", lambda a, b: service.submit(a, (b or {}).get("text"), (b or {}).get("files")), 201),
+        r("POST", "/files", lambda a, b: service.upload(a, (b or {}).get("name"), (b or {}).get("content_base64")), 201),
+        r("GET", f"/files/{seg}", lambda a, b, f: service.file_meta(a, f)),
+        r("GET", f"/files/{seg}/content", lambda a, b, f: ("__file__", *service.file_content(a, f))),
         r("GET", f"/workitems/{seg}", lambda a, b, w: service.get_workitem(a, w)),
         r("POST", f"/workitems/{seg}/human-output",
           lambda a, b, w: service.submit_task(a, w, (b or {}).get("content"))),
@@ -133,12 +138,28 @@ def make_handler(service: WorkspaceService, tokens: TokenStore, allowed_origins:
             self.end_headers()
             self.wfile.write(body)
 
+        def _send_file(self, meta: dict[str, Any], data: bytes) -> None:
+            from urllib.parse import quote
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Content-Disposition", f"attachment; filename*=UTF-8''{quote(meta['name'])}")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            origin = self.headers.get("Origin")
+            if origin and origin in allowed_origins:
+                self.send_header("Access-Control-Allow-Origin", origin)
+                self.send_header("Vary", "Origin")
+            self.end_headers()
+            self.wfile.write(data)
+
         def _error(self, status: int, code: str) -> None:
             self._send(status, {"ok": False, "error": code})
 
         def _body(self) -> Any:
             length = int(self.headers.get("Content-Length") or 0)
-            if length > MAX_BODY:
+            limit = MAX_UPLOAD_BODY if urlsplit(self.path).path.rstrip("/") == f"/{API_VERSION}/files" else MAX_BODY
+            if length > limit:
                 raise WorkspaceError("BODY_TOO_LARGE", 413)
             if length == 0:
                 return None
@@ -181,6 +202,8 @@ def make_handler(service: WorkspaceService, tokens: TokenStore, allowed_origins:
                     return self._error(error.status, error.code)
                 except Exception:  # never leak internals to the client
                     return self._error(500, "INTERNAL_ERROR")
+                if isinstance(result, tuple) and result and result[0] == "__file__":
+                    return self._send_file(result[1], result[2])
                 return self._send(status, {"ok": True, **result} if isinstance(result, dict)
                                   else {"ok": True, "data": result})
             if any(p.match(path) for _, p, _, _ in routes):
