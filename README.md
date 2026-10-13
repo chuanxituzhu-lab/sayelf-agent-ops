@@ -10,7 +10,7 @@ Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗�
 
 > **最少岗位，专业闭环。**
 
-[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md) · [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md) · [工作台 UI 融合决策](docs/bdr-workbench-ui-reference.md) · [通用工作区模式决策](docs/bdr-workspace-mode-unification.md)
+[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md) · [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md) · [工作台 UI 融合决策](docs/bdr-workbench-ui-reference.md) · [通用工作区模式决策](docs/bdr-workspace-mode-unification.md) · [Harness 分派预览决策](docs/bdr-harness-route-edit-loop.md)
 
 ## 下载最新版本
 
@@ -73,7 +73,7 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 - **团队（N 人 + N Agent）：** 专业岗位由人担任时那一步交给人；多人裁决须各批一次才交付；成员可加入、退出，历史不改写。通用团队规格见 `templates/agent-ops-team-workspace.json`；内核评估场见 `evals/fixtures/team-project.json`。
 - **模型接口：** 没有 Claude Code、Codex 等 AI 平台也能运行：直连 DeepSeek、通义千问、豆包、Kimi、智谱或本机 Ollama，每个技能都可由模型起草，自检、复核、人工审批照旧。见 [docs/model-port.md](docs/model-port.md)。
 - **产品工作台接入：** 行业产品用自己的界面，通过本机工作区接口连内核：成员凭各自令牌登录，提交人工任务、联签审批；Agent 没有令牌。BuildCostIQ 是一个显式的造价产品模板，不是 Agent Ops 共享底座的默认 UI。见 [docs/sprint-07-workspace-api.md](docs/sprint-07-workspace-api.md)。
-- **通用本地工作台：** Sprint 09 融合了一个不依赖 Node 的标准库 WebUI：打开后输入行业/专业与工作内容、预览最少岗位、附加文件、提交工作项并查看成果与证据。行业包只是示范与已连接能力目录；未选择行业也能先做路由建议。文本、CSV、JSON、Markdown 与安全的 XLSX 在工作区内提取；PDF、照片、DWG 等先保留原件和哈希，界面明确标注未解析。它只调用当前 Workspace API，不创建第二套执行内核。默认初始化使用 `templates/agent-ops-workspace.json`；多人工作区可显式选择 `templates/agent-ops-team-workspace.json`。见 [Sprint 09 深度融合决策](docs/bdr-sprint09-deep-fusion.md)。
+- **通用本地工作台：** Sprint 09 融合了一个不依赖 Node 的标准库 WebUI：打开后输入行业/专业与工作内容、预览最少岗位、附加文件、提交工作项并查看成果与证据。行业包只是示范与已连接能力目录；未选择行业也能先做路由建议。预览方案后可返回修改，输入变化会使旧方案失效并要求重新生成；确认后才开始执行。文本、CSV、JSON、Markdown 与安全的 XLSX 在工作区内提取；PDF、照片、DWG 等先保留原件和哈希，界面明确标注未解析。它只调用当前 Workspace API，不创建第二套执行内核。默认初始化使用 `templates/agent-ops-workspace.json`；多人工作区可显式选择 `templates/agent-ops-team-workspace.json`。见 [Sprint 09 深度融合决策](docs/bdr-sprint09-deep-fusion.md) 与 [Harness 分派预览决策](docs/bdr-harness-route-edit-loop.md)。
 - **四条 Solo 不变式**由 `evals/test_solo_invariants.py` 强制。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [规则层规格](docs/sprint-02-gates-spec.md)。
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。任何支持 MCP 的 Agent 可通过本机 MCP 入口调用内核，Agent 不能批准，需人在终端批准，见 [docs/mcp.md](docs/mcp.md)。
@@ -190,6 +190,7 @@ submit → deliverable-first routing → load only planned skills → produce �
 - **Teams (N humans + N agents):** a step whose role a human holds goes to that person; quorum gates need one approval from each distinct person; members can join and leave without rewriting history. See `templates/agent-ops-team-workspace.json` and [docs/sprint-06-team.md](docs/sprint-06-team.md).
 - **Model port:** runs without any AI host platform by calling an OpenAI-compatible model directly (DeepSeek, Qwen, Doubao, Kimi, GLM, local Ollama); every skill can be drafted by the model, with self-check, independent review and human approval unchanged. See [docs/model-port.md](docs/model-port.md).
 - **Product workbenches:** an industry product keeps its own UI and connects through the local Workspace API: each member signs in with their own token to submit human steps and decide quorum gates; agents get no token. See [docs/sprint-07-workspace-api.md](docs/sprint-07-workspace-api.md).
+- **Harness route loop:** the generic local workbench previews the minimum role plan through the shared routing contract, lets the user return and edit the input, invalidates stale previews, and starts execution only after the current plan is confirmed. See [docs/bdr-harness-route-edit-loop.md](docs/bdr-harness-route-edit-loop.md).
 - **Four Solo invariants** are enforced by `evals/test_solo_invariants.py`. See [ARCHITECTURE.md](ARCHITECTURE.md) and the [rules spec](docs/sprint-02-gates-spec.md).
 
 For use as a shared Claude Code / Codex skill, see [SKILL.md](SKILL.md); CLI routing: `python scripts/route.py "写 5 个公众号标题"`. Any MCP-capable agent can call the kernel through the local MCP entry; agents cannot approve — a human approves in a terminal. See [docs/mcp.md](docs/mcp.md).

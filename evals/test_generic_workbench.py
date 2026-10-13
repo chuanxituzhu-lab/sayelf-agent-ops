@@ -71,6 +71,8 @@ class GenericWorkbenchTests(unittest.TestCase):
         self.assertIn("data-view=\"connections\"", html)
         self.assertIn("通用智能工作台", html)
         self.assertIn("UNROUTABLE_DELIVERABLE", app)
+        self.assertIn("按此方案开始执行", app)
+        self.assertIn("输入已修改，请重新生成分派方案", app)
         self.assertNotIn("BuildCostIQ", app)
 
 

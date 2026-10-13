@@ -52,10 +52,12 @@
     mount().replaceChildren(form); input.focus();
   }
   function chips() { return node("div", {class: "chips"}, uploads.map((file, index) => node("span", {class: "chip"}, file.name, node("button", {type: "button", text: "移除", onclick: () => { uploads.splice(index, 1); render(); }})))); }
-  function routeCard(data) {
+  function routeCard(data, actions = {}) {
     const decision = data.decision || {};
     const steps = (data.steps || []).map((step, index) => node("li", {}, node("span", {class: "num", text: String(index + 1)}), node("div", {}, node("div", {class: "step-title", text: `${step.role} · ${step.skill}`}), node("div", {class: "muted small", text: step.done_when || "完成岗位输出并留下证据"}))));
-    return node("section", {class: "route stack"}, node("div", {class: "row between"}, node("div", {}, node("b", {text: `${decision.industry || "通用"} · ${decision.deliverable_type || "交付物"}`}), data.industry_input ? node("div", {class: "muted small", text: `输入行业：${data.industry_input}`}) : null), pill(`最少岗位 ${new Set((data.steps || []).map((s) => s.role)).size}`)), node("ol", {class: "steps"}, steps), node("div", {class: "notice", text: data.workflow_validation && data.workflow_validation.valid ? "工作流契约通过结构校验。" : "需要补充输入或能力后再执行。"}));
+    const contractValid = data.workflow_validation && (data.workflow_validation.ok || data.workflow_validation.valid || data.workflow_validation.status === "valid");
+    const controls = actions.onExecute || actions.onEdit ? node("div", {class: "actions"}, actions.onEdit ? node("button", {class: "btn ghost", type: "button", text: "返回修改", onclick: actions.onEdit}) : null, actions.onExecute ? node("button", {class: "btn", type: "button", text: "按此方案开始执行", onclick: actions.onExecute}) : null) : null;
+    return node("section", {class: "route stack"}, node("div", {class: "row between"}, node("div", {}, node("b", {text: `${decision.industry || "通用"} · ${decision.deliverable_type || "交付物"}`}), data.industry_input ? node("div", {class: "muted small", text: `输入行业：${data.industry_input}`}) : null), pill(`最少岗位 ${new Set((data.steps || []).map((s) => s.role)).size}`)), node("ol", {class: "steps"}, steps), node("div", {class: "notice", text: contractValid ? "已生成可核对的分派草案。可修改上方输入后重新生成，确认后再开始执行。" : "需要补充输入或能力后再执行。"}), controls);
   }
   function modelSummary(model) {
     const configured = Boolean(model && model.configured);
@@ -80,6 +82,8 @@
     const text = node("textarea", {class: "input textarea", maxlength: "20000", placeholder: "输入要完成的专业工作，例如：为这篇新品写 5 个公众号标题，给出分工和交付包。"});
     const fileInput = node("input", {type: "file", multiple: true, hidden: true, accept: ".xlsx,.xls,.csv,.tsv,.txt,.md,.json,.pdf,.docx,.dwg,.dxf,.png,.jpg,.jpeg"});
     const preview = node("div", {class: "stack"}); const status = node("span", {class: "muted small"});
+    const clearPreview = () => { if (preview.childElementCount) preview.replaceChildren(node("div", {class: "notice", text: "输入已修改，请重新生成分派方案。"})); };
+    industry.addEventListener("input", clearPreview); text.addEventListener("input", clearPreview);
     fileInput.addEventListener("change", async () => {
       for (const file of Array.from(fileInput.files || [])) {
         if (uploads.length >= 10) { toast("一次最多 10 个附件"); break; }
@@ -91,14 +95,16 @@
     });
     const previewButton = node("button", {class: "btn ghost", type: "button", text: "只看分派方案", onclick: async () => {
       if (!text.value.trim()) { toast("先写工作内容"); return; }
-      try { preview.replaceChildren(routeCard(await api("POST", "/route", {industry: industry.value.trim(), text: text.value.trim()}))); } catch (error) { toast(errorText(error)); }
+      try { preview.replaceChildren(routeCard(await api("POST", "/route", {industry: industry.value.trim(), text: text.value.trim()}), {onEdit: () => text.focus(), onExecute: execute})); } catch (error) { toast(errorText(error)); }
     }});
-    const submit = node("button", {class: "btn", type: "button", text: "开始执行", onclick: async () => {
+    let submit;
+    const execute = async () => {
       if (!text.value.trim()) { toast("先写工作内容"); return; }
       submit.disabled = true;
       try { const item = await api("POST", "/workitems", {industry: industry.value.trim(), text: text.value.trim(), files: uploads.map((file) => file.id)}); uploads = []; location.hash = `#/items/${encodeURIComponent(item.id)}`; }
       catch (error) { toast(errorText(error)); } finally { submit.disabled = false; }
-    }});
+    };
+    submit = node("button", {class: "btn", type: "button", text: "开始执行", onclick: execute});
     const recent = (items.workitems || []).slice(0, 5);
     const hero = node("section", {class: "hero card"}, node("h1", {text: "今天要交付什么？"}), node("p", {text: "这是通用 Agent Ops 工作台。输入行业或专业与工作内容，系统按最少岗位生成可核对的工作闭环。"}));
     const inputCard = node("section", {class: "card stack"}, heading("输入需求", "本地处理"), node("label", {class: "field"}, "行业 / 专业（可填）", industry), node("label", {class: "field"}, "工作内容", text), node("div", {class: "row"}, node("label", {class: "btn ghost", text: "附加文字 / PDF / 图片"}, fileInput)), uploads.length ? chips() : null, node("p", {class: "notice", text: "行业包只是示范与已连接能力目录；不选择行业也可以先生成路由建议。附件和工作内容均在本机处理。"}), node("div", {class: "actions"}, previewButton, submit, status), preview);
