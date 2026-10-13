@@ -36,8 +36,12 @@ class GenericWorkbenchTests(unittest.TestCase):
 
     def test_console_explains_generic_base_and_optional_packs(self):
         app = (ROOT / "sayelf_agent_ops" / "console" / "web" / "app.js").read_text(encoding="utf-8")
+        html = (ROOT / "sayelf_agent_ops" / "console" / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("行业 / 专业（可填）", app)
         self.assertIn("行业包只是示范与已连接能力目录", app)
+        self.assertIn("async function connections()", app)
+        self.assertIn("data-view=\"connections\"", html)
+        self.assertIn("通用智能工作台", html)
         self.assertNotIn("BuildCostIQ", app)
 
 

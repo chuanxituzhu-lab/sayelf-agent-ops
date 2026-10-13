@@ -10,7 +10,7 @@ Sayelf 把一项业务请求整理成 WorkItem，再按交付物、行业、岗�
 
 > **最少岗位，专业闭环。**
 
-[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md) · [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md)
+[下载最新版本](#下载最新版本) · [English](#sayelf-agent-ops-1) · [Windows 构建说明](installer/windows/README.md) · [桌面构建决策](docs/desktop-build-decision.md) · [最少岗位决策](docs/bdr-adaptive-minimum-workflow.md) · [v1.5 工作流融合决策](docs/bdr-workflow-v15-fusion.md) · [工作台 UI 融合决策](docs/bdr-workbench-ui-reference.md)
 
 ## 下载最新版本
 
