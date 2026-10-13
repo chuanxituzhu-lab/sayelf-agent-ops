@@ -1,0 +1,32 @@
+{
+  "id": "P-TEAM-APPROVAL-TEST",
+  "description": "团队审批验证规格：多人类成员与默认 Agent；仅用于内核评估，不是产品行业模板。",
+  "members": [
+    {"id": "human.pm", "name": "项目负责人", "roles": ["owner", "project-manager"]},
+    {"id": "human.cost-lead", "name": "商务负责人", "roles": ["cost-lead"]},
+    {"id": "human.tech-lead", "name": "技术负责人", "roles": ["engineering.technical"]},
+    {"id": "human.prod-lead", "name": "交付负责人", "roles": ["production-lead"]}
+  ],
+  "include_default_agents": true,
+  "policy": {
+    "gated_deliverables": {
+      "boq-diff": "cost-release",
+      "cost-analysis": "cost-release",
+      "professional-brief": "cost-release",
+      "platform-package": "publish",
+      "progress-review": "progress-release",
+      "quantity-review": "quantity-release",
+      "evidence-package": "technical-quality-release",
+      "test-report-check": "technical-quality-release",
+      "hazard-record": "safety-release"
+    },
+    "gate_approver_roles": {"publish": ["owner"]},
+    "gate_quorum": {
+      "cost-release": ["cost-lead", "project-manager"],
+      "progress-release": ["production-lead", "cost-lead"],
+      "quantity-release": ["production-lead", "cost-lead"],
+      "technical-quality-release": ["engineering.technical", "cost-lead"],
+      "safety-release": ["production-lead", "engineering.technical"]
+    }
+  }
+}

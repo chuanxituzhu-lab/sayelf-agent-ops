@@ -1,6 +1,6 @@
 # Sprint 06：多人多 Agent（Team）与成员进出（Hybrid）——内核层
 
-> 状态：内核层完成（2026-10-10）。基线：ec923db。验证场：BuildCostIQ 施工项目部模板（`templates/buildcostiq-project-department.json`）。
+> 状态：内核层完成（2026-10-10）。基线：ec923db。验证场：团队审批评估规格（`evals/fixtures/team-project.json`）。该规格只用于测试，不是 Agent Ops 产品模板。
 
 ## 0. 一句话
 

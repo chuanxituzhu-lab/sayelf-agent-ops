@@ -14,7 +14,7 @@ from sayelf_agent_ops.providers.config import (ModelConfigError, ModelSetup, con
                                                write_config)
 from sayelf_agent_ops.workspace import WorkspaceService
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "buildcostiq-project-department.json"
+TEMPLATE = Path(__file__).resolve().parent / "fixtures" / "team-project.json"
 BOQ = "对比两版 BOQ 的清单特征变化和漏项"
 
 

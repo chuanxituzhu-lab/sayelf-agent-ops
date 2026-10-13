@@ -8,7 +8,7 @@ from pathlib import Path
 
 from sayelf_agent_ops.workspace import WorkspaceError, WorkspaceService
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "buildcostiq-project-department.json"
+TEMPLATE = Path(__file__).resolve().parent / "fixtures" / "team-project.json"
 BOQ = "对比两版 BOQ 的清单特征变化和漏项"
 DRAWING = "比较两版施工图的版本变化"
 PROGRESS = "核对二标段本月形象进度是否滞后"
@@ -77,7 +77,7 @@ class RestartTests(unittest.TestCase):
         self.ws.submit("human.pm", PROGRESS)
         data = json.loads((self.home / "workspace" / "state.json").read_text(encoding="utf-8"))
         self.assertEqual(1, data["v"])
-        self.assertEqual("P-BUILDCOSTIQ-DEMO", data["project"])
+        self.assertEqual("P-TEAM-APPROVAL-TEST", data["project"])
 
 
 if __name__ == "__main__":

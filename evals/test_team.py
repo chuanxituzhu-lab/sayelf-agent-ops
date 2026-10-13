@@ -10,7 +10,7 @@ from sayelf_agent_ops.gates import GateRejected
 from sayelf_agent_ops.runtime import Runtime
 from sayelf_agent_ops.state import TransitionRejected
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "buildcostiq-project-department.json"
+TEMPLATE = Path(__file__).resolve().parent / "fixtures" / "team-project.json"
 BOQ = "对比两版 BOQ 的清单特征变化和漏项"
 DRAWING = "比较两版施工图的版本变化"
 

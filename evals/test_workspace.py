@@ -12,7 +12,7 @@ from pathlib import Path
 from sayelf_agent_ops.workspace import WorkspaceError, WorkspaceService
 from sayelf_agent_ops.workspace_api import TokenStore, make_server
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "buildcostiq-project-department.json"
+TEMPLATE = Path(__file__).resolve().parent / "fixtures" / "team-project.json"
 BOQ = "对比两版 BOQ 的清单特征变化和漏项"
 DRAWING = "比较两版施工图的版本变化"
 PROGRESS = "核对二标段本月形象进度是否滞后"

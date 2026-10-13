@@ -14,7 +14,7 @@ from sayelf_agent_ops.workspace import WorkspaceService
 from sayelf_agent_ops.workspace_api import TokenStore, make_server
 from sayelf_agent_ops.console import __main__ as console
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "templates" / "buildcostiq-project-department.json"
+TEMPLATE = Path(__file__).resolve().parent / "fixtures" / "team-project.json"
 
 
 class FileIntakeTests(unittest.TestCase):

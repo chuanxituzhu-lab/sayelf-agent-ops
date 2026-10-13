@@ -11,6 +11,7 @@ from sayelf_agent_ops.workspace import WorkspaceService
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERIC = ROOT / "templates" / "agent-ops-workspace.json"
+TEAM = ROOT / "templates" / "agent-ops-team-workspace.json"
 
 
 class GenericWorkbenchTests(unittest.TestCase):
@@ -23,6 +24,18 @@ class GenericWorkbenchTests(unittest.TestCase):
             self.assertEqual("P-SAYELF-AGENT-OPS", view["id"])
             self.assertEqual(["human.owner"], [member["id"] for member in humans])
             self.assertNotIn("human.pm", {member["id"] for member in humans})
+            self.assertEqual("solo", view["mode"])
+            self.assertEqual("一人多 Agent", view["mode_label"])
+
+    def test_team_template_exposes_many_people_many_agents(self):
+        with tempfile.TemporaryDirectory() as raw:
+            home = Path(raw)
+            service = WorkspaceService(spec=json.loads(TEAM.read_text(encoding="utf-8")), home=home)
+            view = service.project_view("human.owner")
+            self.assertEqual("team", view["mode"])
+            self.assertEqual("多人多 Agent", view["mode_label"])
+            self.assertEqual(2, view["human_count"])
+            self.assertGreater(view["agent_count"], 0)
 
     def test_industry_input_is_a_route_hint_and_stays_read_only(self):
         with tempfile.TemporaryDirectory() as raw:

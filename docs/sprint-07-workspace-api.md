@@ -70,8 +70,8 @@ Claude Code / Codex / Cursor / WorkBuddy …
 ```powershell
 $py = "$env:LOCALAPPDATA\Python\pythoncore-3.14-64\python.exe"
 cd D:\Codex\skills\sayelf-agent-ops
-& $py -m sayelf_agent_ops.workspace_api init --spec templates\buildcostiq-project-department.json
-& $py -m sayelf_agent_ops.workspace_api issue-token human.pm
+& $py -m sayelf_agent_ops.workspace_api init --spec templates\agent-ops-team-workspace.json
+& $py -m sayelf_agent_ops.workspace_api issue-token human.owner
 & $py -m sayelf_agent_ops.workspace_api serve --allow-origin http://127.0.0.1:5173
 ```
 

@@ -226,11 +226,17 @@ class WorkspaceService:
         with self._lock:
             self.member(actor_id)
             spec = self.project.to_spec()
+            human_count = len(self.project.humans)
+            agent_count = len([member for member in self.project.active_members if member.kind == "agent"])
             return {
                 "id": self.project.id,
                 "members": [self._actor_view(m) for m in self.project.members],
                 "policy": spec["policy"],
                 "packs": list(self.registry.loaded_industries),
+                "mode": "solo" if human_count == 1 else "team",
+                "mode_label": "一人多 Agent" if human_count == 1 else "多人多 Agent",
+                "human_count": human_count,
+                "agent_count": agent_count,
             }
 
     def capabilities(self, actor_id: str) -> dict[str, Any]:

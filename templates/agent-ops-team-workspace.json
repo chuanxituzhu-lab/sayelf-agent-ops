@@ -1,0 +1,13 @@
+{
+  "id": "P-SAYELF-AGENT-OPS-TEAM",
+  "description": "Sayelf Agent Ops 通用团队工作区：多人可各自持有已注册专业岗位，默认 Agent 与人工成员共同协作。",
+  "members": [
+    {"id": "human.owner", "name": "负责人", "roles": ["owner"]},
+    {"id": "human.operator", "name": "专业负责人", "roles": []}
+  ],
+  "include_default_agents": true,
+  "policy": {
+    "gated_deliverables": {"platform-package": "publish"},
+    "gate_approver_roles": {"publish": ["owner"]}
+  }
+}
