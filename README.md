@@ -73,6 +73,7 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 - **团队（N 人 + N Agent）：** 专业岗位由人担任时那一步交给人；“造价负责人 + 项目经理”这类多人裁决须各批一次才交付；成员可加入、退出，历史不改写。示例见 `templates/buildcostiq-project-department.json` 与 [docs/sprint-06-team.md](docs/sprint-06-team.md)。
 - **模型接口：** 没有 Claude Code、Codex 等 AI 平台也能运行：直连 DeepSeek、通义千问、豆包、Kimi、智谱或本机 Ollama，每个技能都可由模型起草，自检、复核、人工审批照旧。见 [docs/model-port.md](docs/model-port.md)。
 - **产品工作台接入：** 行业产品（首个是 BuildCostIQ）用自己的界面，通过本机工作区接口连内核：成员凭各自令牌登录，提交人工任务、联签审批；Agent 没有令牌。见 [docs/sprint-07-workspace-api.md](docs/sprint-07-workspace-api.md)。
+- **通用本地工作台：** Sprint 09 融合了一个不依赖 Node 的标准库 WebUI：打开后输入需求、预览最少岗位、附加文件、提交工作项并查看成果与证据。文本、CSV、JSON、Markdown 与安全的 XLSX 在工作区内提取；PDF、照片、DWG 等先保留原件和哈希，界面明确标注未解析。它只调用当前 Workspace API，不创建第二套执行内核。见 [Sprint 09 深度融合决策](docs/bdr-sprint09-deep-fusion.md)。
 - **四条 Solo 不变式**由 `evals/test_solo_invariants.py` 强制。详见 [ARCHITECTURE.md](ARCHITECTURE.md) 与 [规则层规格](docs/sprint-02-gates-spec.md)。
 
 作为 Claude Code / Codex 共享 Skill 使用时，见 [SKILL.md](SKILL.md)；命令行路由：`python scripts/route.py "写 5 个公众号标题"`。任何支持 MCP 的 Agent 可通过本机 MCP 入口调用内核，Agent 不能批准，需人在终端批准，见 [docs/mcp.md](docs/mcp.md)。
@@ -98,6 +99,9 @@ Solo 与 Team 共用一条执行路径，代码里没有 `mode` 字段：单人�
 ```powershell
 python -m sayelf_agent_ops.demo
 python -m unittest discover -s evals -v
+# 工作区 API 与本地 WebUI（两个终端）
+python -m sayelf_agent_ops.workspace_api serve --allow-origin http://127.0.0.1:18766
+python -m sayelf_agent_ops.console
 ```
 
 Python 自动评估集覆盖核心路由与状态、团队协作（人工步骤、多人裁决、成员进出）、工作区接口（令牌身份、来源限制）、规则层（两道门与加载器）、执行内核与四条 Solo 不变式、审批持久化、模型标题与短视频脚本技能、行业包按需加载、MCP 入口与终端人工批准、桌面基线，以及媒体执行流程的离线模拟。预期媒体路由示例：

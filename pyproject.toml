@@ -15,6 +15,10 @@ mcp = ["mcp>=1.2"]
 sayelf-agent-ops-demo = "sayelf_agent_ops.demo:main"
 sayelf-agent-ops-mcp = "sayelf_agent_ops.mcp_server:main"
 sayelf-approve = "sayelf_agent_ops.approve_cli:main"
+sayelf-agent-ops-console = "sayelf_agent_ops.console:main"
 
 [tool.setuptools.packages.find]
 include = ["sayelf_agent_ops", "sayelf_agent_ops.*"]
+
+[tool.setuptools.package-data]
+sayelf_agent_ops = ["console/web/*"]
